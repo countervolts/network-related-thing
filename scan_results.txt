@@ -1,0 +1,332 @@
+[
+  {
+    "ip": "192.168.87.1",
+    "mac": "08:b4:b1:63:d5:c6",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": true,
+    "timestamp": "2025-03-28T23:23:52.870798"
+  },
+  {
+    "ip": "192.168.87.21",
+    "mac": "d8:eb:46:a6:a7:58",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:52.915501"
+  },
+  {
+    "ip": "192.168.87.22",
+    "mac": "62:a0:aa:ed:e9:f2",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:52.960681"
+  },
+  {
+    "ip": "192.168.87.24",
+    "mac": "a8:51:ab:b3:50:74",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.006307"
+  },
+  {
+    "ip": "192.168.87.25",
+    "mac": "1c:d6:bd:c1:00:14",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.052052"
+  },
+  {
+    "ip": "192.168.87.26",
+    "mac": "44:67:55:43:3d:7f",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.100526"
+  },
+  {
+    "ip": "192.168.87.27",
+    "mac": "1c:d6:bd:c1:11:16",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.145992"
+  },
+  {
+    "ip": "192.168.87.28",
+    "mac": "cc:8c:bf:67:8e:c0",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.192957"
+  },
+  {
+    "ip": "192.168.87.30",
+    "mac": "cc:6a:10:22:2b:2e",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.239925"
+  },
+  {
+    "ip": "192.168.87.31",
+    "mac": "1c:d6:bd:c1:36:9c",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.284505"
+  },
+  {
+    "ip": "192.168.87.33",
+    "mac": "ce:b5:e7:f6:5c:31",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.331756"
+  },
+  {
+    "ip": "192.168.87.34",
+    "mac": "00:1f:54:65:e8:be",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.377196"
+  },
+  {
+    "ip": "192.168.87.35",
+    "mac": "70:2a:d5:1e:48:09",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.424137"
+  },
+  {
+    "ip": "192.168.87.37",
+    "mac": "d8:eb:46:7e:7b:23",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.471563"
+  },
+  {
+    "ip": "192.168.87.41",
+    "mac": "1c:30:08:5d:34:cb",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.516449"
+  },
+  {
+    "ip": "192.168.87.43",
+    "mac": "18:b4:30:2f:aa:b7",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.561647"
+  },
+  {
+    "ip": "192.168.87.48",
+    "mac": "1c:f2:9a:a1:f4:74",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.606222"
+  },
+  {
+    "ip": "192.168.87.49",
+    "mac": "08:b4:b1:4b:3f:06",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.651587"
+  },
+  {
+    "ip": "192.168.87.52",
+    "mac": "1c:f2:9a:a1:f4:1c",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.697090"
+  },
+  {
+    "ip": "192.168.87.53",
+    "mac": "08:b4:b1:63:d7:aa",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.741099"
+  },
+  {
+    "ip": "192.168.87.56",
+    "mac": "98:22:ef:49:fb:59",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.785507"
+  },
+  {
+    "ip": "192.168.87.58",
+    "mac": "cc:8c:bf:67:90:17",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.829363"
+  },
+  {
+    "ip": "192.168.87.59",
+    "mac": "c8:6c:3d:8e:d0:e6",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.873807"
+  },
+  {
+    "ip": "192.168.87.65",
+    "mac": "9c:58:3c:a0:bb:04",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.917541"
+  },
+  {
+    "ip": "192.168.87.66",
+    "mac": "30:d1:6b:2f:05:d5",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:53.961510"
+  },
+  {
+    "ip": "192.168.87.70",
+    "mac": "86:d1:e4:3a:93:fe",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:54.005590"
+  },
+  {
+    "ip": "192.168.87.79",
+    "mac": "30:85:a9:40:fb:51",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:54.050054"
+  },
+  {
+    "ip": "192.168.87.80",
+    "mac": "5c:c5:63:56:7f:19",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:54.094233"
+  },
+  {
+    "ip": "192.168.87.82",
+    "mac": "74:29:af:39:4c:44",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:54.140437"
+  },
+  {
+    "ip": "192.168.87.84",
+    "mac": "44:01:bb:50:77:96",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:54.185014"
+  },
+  {
+    "ip": "192.168.87.159",
+    "mac": "00:22:5f:b8:56:b6",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:54.230252"
+  },
+  {
+    "ip": "192.168.87.241",
+    "mac": "Not Found",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": true,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:54.278086"
+  },
+  {
+    "ip": "192.168.87.250",
+    "mac": "38:f9:d3:d7:df:b9",
+    "hostname": "Skipped",
+    "vendor": "Skipped",
+    "open_ports": [],
+    "is_local": false,
+    "is_gateway": false,
+    "timestamp": "2025-03-28T23:23:54.324606"
+  }
+]

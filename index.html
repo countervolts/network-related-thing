@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Scanner</title>
+    <link rel="stylesheet" href="src/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <h1>Network Scanner</h1>
+            <button id="basicScanBtn" class="scan-btn">Basic Scan</button>
+            <button id="fullScanBtn" class="scan-btn">Full Scan</button>
+        </div>
+        <div id="resultsContainer" class="results-container">
+            <div class="results-header">
+                <div>IP Address</div>
+                <div>MAC Address</div>
+                <div>Hostname</div>
+                <div>Vendor</div>
+            </div>
+            <div id="resultsBody" class="results-body"></div>
+        </div>
+    </div>
+    <div id="notificationContainer" class="notification-container"></div>
+    <div class="version">v0.1</div>
+    <script src="src/app.js"></script>
+</body>
+</html>
