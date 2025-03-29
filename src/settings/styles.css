@@ -1,0 +1,20 @@
+#settingsView {
+    padding: 20px;
+    background-color: #1e1e1e;
+    border-radius: 12px;
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+    color: #e0e0e0;
+    font-size: 1em;
+}
+
+#settingsView h1 {
+    font-size: 2em;
+    margin-bottom: 20px;
+    color: #64B5F6;
+}
+
+#settingsContent p {
+    font-size: 1em;
+    color: #e0e0e0;
+    line-height: 1.6;
+}

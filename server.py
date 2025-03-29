@@ -1,7 +1,6 @@
 from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
-import subprocess
-import threading
+import os
 
 app = Flask(__name__)
 CORS(app)
@@ -10,7 +9,6 @@ CORS(app)
 from src.ping import scan_network, get_local_ips, get_default_gateway
 
 def get_subnet():
-    """Get the user's subnet based on the default gateway."""
     default_gateway = get_default_gateway()
     if default_gateway:
         subnet = '.'.join(default_gateway.split('.')[:3])

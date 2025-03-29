@@ -4,27 +4,50 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Network Scanner</title>
-    <link rel="stylesheet" href="src/static/styles.css">
+    <link rel="stylesheet" href="src/scanner/styles.css">
 </head>
 <body>
+    <div class="nav-container">
+        <nav class="nav-menu">
+            <ul>
+                <li><a href="#scanner" id="scannerTab">Scanner</a></li>
+                <li><a href="#settings" id="settingsTab">Settings</a></li>
+            </ul>
+        </nav>
+    </div>
     <div class="container">
-        <div class="controls">
-            <h1>Network Scanner</h1>
-            <button id="basicScanBtn" class="scan-btn">Basic Scan</button>
-            <button id="fullScanBtn" class="scan-btn">Full Scan</button>
-        </div>
-        <div id="resultsContainer" class="results-container">
-            <div class="results-header">
-                <div>IP Address</div>
-                <div>MAC Address</div>
-                <div>Hostname</div>
-                <div>Vendor</div>
+        <div id="scannerView" class="view">
+            <div class="controls">
+                <h1 id="scanner">Network Scanner</h1>
+                <div class="buttons">
+                    <button id="basicScanBtn" class="scan-btn">Basic Scan</button>
+                    <button id="fullScanBtn" class="scan-btn">Full Scan</button>
+                </div>
+                <span id="lastScanTimestamp" class="timestamp">- Previous scan: Not yet performed</span>
             </div>
-            <div id="resultsBody" class="results-body"></div>
+            <div id="resultsContainer" class="results-container">
+                <div class="results-header">
+                    <div>IP Address</div>
+                    <div>MAC Address</div>
+                    <div>Hostname</div>
+                    <div>Vendor</div>
+                </div>
+                <div id="resultsBody" class="results-body"></div>
+            </div>
+        </div>
+
+        <div id="settingsView" class="view" style="display: none;">
+            <h1>Settings</h1>
+            <div id="settingsContent">
+                <p>Adjust your preferences here.</p>
+            </div>
         </div>
     </div>
     <div id="notificationContainer" class="notification-container"></div>
     <div class="version">v0.1</div>
-    <script src="src/app.js"></script>
+
+    <!-- Scripts -->
+    <script src="src/scanner/app.js"></script>
+    <script src="src/settings/settings.js"></script>
 </body>
 </html>

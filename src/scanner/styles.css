@@ -66,17 +66,78 @@ header h1 {
     }
 }
 
-.container {
+
+.nav-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 200px;
+    height: 100%;
+    background-color: #1e1e1e;
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2);
     display: flex;
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: flex-start;
+    flex-direction: column;
     padding: 20px;
 }
 
+.nav-menu {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.nav-menu ul {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.nav-menu li {
+    font-size: 1em;
+}
+
+.nav-menu a {
+    text-decoration: none;
+    color: #e0e0e0;
+    padding: 10px 15px;
+    border-radius: 8px;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+.nav-menu a:hover {
+    background-color: #444;
+    color: #fff;
+}
+
+.container {
+    margin-left: 220px; /* Account for the navigation menu */
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.controls {
+    margin-bottom: 20px; /* Add spacing below the controls */
+    text-align: left;
+    width: 100%;
+}
+
+.controls h1 {
+    font-size: 2em;
+    margin-bottom: 10px;
+    color: #e0e0e0;
+}
+
+.buttons {
+    display: flex;
+    gap: 10px; /* Add spacing between buttons */
+    margin-bottom: 10px;
+}
+
 .results-container {
-    width: 60%; /* Adjust width as needed */
-    max-height: 80vh;
+    width: 850px; 
+    height: 750px;
     overflow-y: auto;
     border: 1px solid #444;
     border-radius: 12px;
@@ -194,4 +255,11 @@ header h1 {
 
 .scan-btn:hover {
     background-color: #555;
+}
+
+.timestamp {
+    margin-left: 15px;
+    font-size: 0.9em;
+    color: #e0e0e0;
+    font-style: italic;
 }
