@@ -2,6 +2,8 @@ from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 import subprocess
 import threading
+import argparse
+import sys
 
 app = Flask(__name__)
 CORS(app)
@@ -27,5 +29,23 @@ def index():
 def static_files(path):
     return send_from_directory('.', path)
 
+def suppress_console_output():
+    """Redirect stdout and stderr to suppress console output."""
+    if sys.platform == 'win32': 
+        sys.stdout = open('nul', 'w')
+        sys.stderr = open('nul', 'w')
+
 if __name__ == '__main__':
+    print("hosted at http://localhost:5000")
+
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Run the Flask server.")
+    parser.add_argument('-s', '--suppress', action='store_true', help="Suppress console output")
+    args = parser.parse_args()
+
+    # Suppress console output if -s is passed
+    if args.suppress:
+        print("supressing console output")
+        suppress_console_output()
+
     app.run(host='0.0.0.0', port=5000, threaded=True)
