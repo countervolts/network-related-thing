@@ -3,51 +3,235 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Network Scanner</title>
+    <title>network related things</title>
     <link rel="stylesheet" href="src/scanner/styles.css">
+    <link rel="stylesheet" href="src/settings/styles.css">
+    <link rel="stylesheet" href="src/misc/styles.css">
+    <link rel="stylesheet" href="src/bypass/styles.css">
+    <link rel="stylesheet" href="src/history/styles.css">
 </head>
 <body>
     <div class="nav-container">
         <nav class="nav-menu">
             <ul>
                 <li><a href="#scanner" id="scannerTab">Scanner</a></li>
+                <li><a href="#bypass" id="bypassTab">Bypass</a></li>
+                <li><a href="#history" id="historyTab">History</a></li>
                 <li><a href="#settings" id="settingsTab">Settings</a></li>
+                <li><a href="#misc" id="miscTab">Misc</a></li>
             </ul>
         </nav>
     </div>
+
     <div class="container">
-        <div id="scannerView" class="view">
+        <!-- Scanner View -->
+        <div id="scannerView" class="view" style="display: block;">
             <div class="controls">
-                <h1 id="scanner">Network Scanner</h1>
+                <h1 id="scanner" style="color: white;">Network Scanner</h1>
                 <div class="buttons">
                     <button id="basicScanBtn" class="scan-btn">Basic Scan</button>
                     <button id="fullScanBtn" class="scan-btn">Full Scan</button>
+                    <button id="disableBtn" class="scan-btn" disabled>Disable</button>
+                    <button id="enableBtn" class="scan-btn" disabled>Enable</button>
                 </div>
                 <span id="lastScanTimestamp" class="timestamp">- Previous scan: Not yet performed</span>
             </div>
-            <div id="resultsContainer" class="results-container">
-                <div class="results-header">
-                    <div>IP Address</div>
-                    <div>MAC Address</div>
-                    <div>Hostname</div>
-                    <div>Vendor</div>
+            <div class="results-and-disabled">
+                <div id="resultsContainer" class="results-container">
+                    <div class="results-header">
+                        <div>IP Address</div>
+                        <div>MAC Address</div>
+                        <div>Hostname</div>
+                        <div>Vendor</div>
+                    </div>
+                    <div id="resultsBody" class="results-body"></div>
                 </div>
-                <div id="resultsBody" class="results-body"></div>
+                <div class="disabled-devices">
+                    <h3>Disabled Devices</h3>
+                    <div id="disabledDevices" class="device-box"></div>
+                </div>
             </div>
         </div>
 
+        <!-- Bypass View -->
+        <div id="bypassView" class="view" style="display: none;">
+            <h1 id="bypass">MAC Address Bypass</h1>
+            <div class="bypass-section">
+                <h2>Select Network Adapter</h2>
+                <div id="adapterList" class="adapter-list"></div>
+                <div id="statusMessage" class="status-message" style="display: none;"></div>
+            </div>
+        </div>
+
+        <!-- History View -->
+        <div id="historyView" class="view" style="display: none;">
+            <h1>History</h1>
+            <div class="history-container">
+                <div class="scan-history">
+                    <h2>Scan History</h2>
+                    <div id="scanHistoryList" class="history-list"></div>
+                </div>
+                <div class="bypass-history">
+                    <h2>Bypass History</h2>
+                    <div id="bypassHistoryList" class="history-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings View -->
         <div id="settingsView" class="view" style="display: none;">
             <h1>Settings</h1>
             <div id="settingsContent">
-                <p>Adjust your preferences here.</p>
+                <div class="setting-item">
+                    <label for="hideWebsiteToggle" class="setting-label">
+                        <span>Hide Website</span>
+                        <p class="setting-description">If enabled, only the creator can access the website. Unauthorized users will be redirected.</p>
+                    </label>
+                    <input type="checkbox" id="hideWebsiteToggle" class="toggle">
+                </div>
+                <div class="setting-item">
+                    <label for="autoOpenToggle" class="setting-label">
+                        <span>Auto Open Page</span>
+                        <p class="setting-description">If enabled, the website will automatically open in your browser when the server starts.</p>
+                    </label>
+                    <input type="checkbox" id="autoOpenToggle" class="toggle">
+                </div>
+                
+                <div class="setting-item">
+                    <label for="runAsAdminToggle" class="setting-label">
+                        <span>Run as Admin</span>
+                        <p class="setting-description">If enabled, the application will restart with administrative privileges.</p>
+                    </label>
+                    <input type="checkbox" id="runAsAdminToggle" class="toggle">
+                </div>
+                <div class="setting-item">
+                    <label for="bypassModeDropdown" class="setting-label">
+                        <span>Bypass Mode</span>
+                        <p class="setting-description">Select the method to use for bypassing (commands or Registry).</p>
+                    </label>
+                    <select id="bypassModeDropdown" class="dropdown">
+                        <option value="registry" selected>Registry</option>
+                        <option value="cmd">CMD</option>
+                    </select>
+                </div>
+        
+                <hr class="settings-separator">
+        
+                <h2 class="developer-settings-header">Developer Settings</h2>
+                <div class="setting-item">
+                    <label for="debugModeDropdown" class="setting-label">
+                        <span>Debug Mode</span>
+                        <p class="setting-description">Select the level of debug information to display in the server logs (No restart required).</p>
+                    </label>
+                    <select id="debugModeDropdown" class="dropdown">
+                        <option value="off">Off</option>
+                        <option value="basic">Basic</option>
+                        <option value="full">Full</option>
+                    </select>
+                </div>
+        
+                <button id="applySettingsBtn" class="apply-btn">Apply Changes</button>
             </div>
         </div>
-    </div>
-    <div id="notificationContainer" class="notification-container"></div>
-    <div class="version">v0.1</div>
 
-    <!-- Scripts -->
+        <!-- Miscellaneous View -->
+        <div id="miscView" class="view" style="display: none;">
+            <h1>Miscellaneous</h1>
+            <div id="miscContent">
+                <div class="setting-item">
+                    <label class="setting-label">
+                        <span>Clear Console</span>
+                        <p class="setting-description">Clears the console.</p>
+                    </label>
+                    <button id="clearConsoleBtn" class="apply-btn">Clear Console</button>
+                </div>
+                <div class="setting-item">
+                    <label class="setting-label">
+                        <span>Clear Local Storage</span>
+                        <p class="setting-description">Clears all data stored in the browser's local storage. (Whatever is shown in scanner currently will be removed)</p>
+                    </label>
+                    <button id="clearLocalStorageBtn" class="apply-btn">Clear Local Storage</button>
+                </div>
+                <div class="setting-item">
+                    <label class="setting-label">
+                        <span>Clear History</span>
+                        <p class="setting-description">Select the type of history to clear. (All history can be viewed if you click "Open Storage Folder")</p>
+                    </label>
+                    <select id="clearHistoryDropdown" class="dropdown1">
+                        <option value="scan">Scan History</option>
+                        <option value="bypass">Bypass History</option>
+                        <option value="all">All History</option>
+                    </select>
+                    <div class="button-group">
+                        <button id="clearHistoryBtn" class="apply-btn half-width">Clear Selected History</button>
+                        <button id="openHistoryFolderBtn" class="apply-btn half-width">Open Storage Folder</button>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <label class="setting-label">
+                        <span>Download OUI File</span>
+                        <p class="setting-description">Downloads the "latest" OUI file for vendor lookups.</p>
+                    </label>
+                    <button id="downloadOuiBtn" class="apply-btn">Download OUI File (6 MB)</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="confirmationModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <h2>Confirm Changes</h2>
+                <p>The following changes will be applied:</p>
+                <ul id="changesList" class="changes-list"></ul>
+                <div class="modal-actions">
+                    <button id="confirmBtn" class="modal-btn confirm">Yes</button>
+                    <button id="cancelBtn" class="modal-btn cancel">No</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="notificationContainer" class="notification-container"></div>
+        <div class="version">v1.0</div>
+    </div>
+
     <script src="src/scanner/app.js"></script>
     <script src="src/settings/settings.js"></script>
+    <script src="src/misc/misc.js"></script>
+    <script src="src/bypass/yep.js"></script>
+    <script src="src/history/tracker.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            function showViewFromHash() {
+                const hash = window.location.hash || '#scanner';
+                const views = {
+                    '#scanner': 'scannerView',
+                    '#bypass': 'bypassView',
+                    '#history': 'historyView',
+                    '#settings': 'settingsView',
+                    '#misc': 'miscView'
+                };
+
+                Object.values(views).forEach(viewId => {
+                    document.getElementById(viewId).style.display = 'none';
+                });
+                const viewId = views[hash];
+                if (viewId) {
+                    document.getElementById(viewId).style.display = 'block';
+                }
+
+                const scannerView = document.getElementById('scannerView');
+                const resultsBody = document.getElementById('resultsBody');
+
+                if (!scannerView || !resultsBody) {
+                    console.error('Initialization error: scannerView or resultsBody is missing from the DOM.');
+                } else {
+                    console.log('scannerView and resultsBody are properly initialized.');
+                }
+            }
+
+            window.addEventListener('hashchange', showViewFromHash);
+            showViewFromHash();
+        });
+    </script>
 </body>
 </html>

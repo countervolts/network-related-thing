@@ -110,7 +110,8 @@ header h1 {
 }
 
 .container {
-    margin-left: 220px; /* Account for the navigation menu */
+    margin-left: 250px; /* Increase space to the left */
+    margin-right: 30px; /* Add space to the right */
     padding: 20px;
     display: flex;
     flex-direction: column;
@@ -135,8 +136,14 @@ header h1 {
     margin-bottom: 10px;
 }
 
+.results-and-disabled {
+    display: flex;
+    gap: 20px;
+    margin-top: 20px;
+}
+
 .results-container {
-    width: 850px; 
+    flex: 2;
     height: 750px;
     overflow-y: auto;
     border: 1px solid #444;
@@ -179,30 +186,43 @@ header h1 {
     transition: transform 0.2s, box-shadow 0.2s;
 }
 
+.result-item.selected {
+    border: 2px solid #4caf50;
+    background-color: #333;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
 .result-item:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
+.result-item.selected:hover {
+    transform: none;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.device-separator {
+    border: none;
+    border-top: 1px solid #ccc;
+    margin: 10px 0;
+}
+
 .result-item .ip {
     font-weight: bold;
-    color: #64B5F6;
+    color: #64B5F6; 
 }
 
 .result-item .mac {
-    color: #CE93D8;
+    color: #CE93D8; 
 }
 
 .result-item .hostname {
-    color: #81C784;
+    color: #81C784; 
 }
 
 .result-item .vendor {
     color: #FFD54F;
-}
-
-.result-item .ports {
-    color: #EF5350;
 }
 
 .result-header {
@@ -214,6 +234,29 @@ header h1 {
     border-bottom: 2px solid #444;
     font-weight: bold;
     color: #e0e0e0;
+    text-align: center;
+}
+
+.disabled-devices {
+    flex: 1;
+    background-color: #202020;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    color: #d0d0d0;
+    height: 750px;
+    overflow-y: auto;
+}
+
+.device-box {
+    max-height: 700px;
+    overflow-y: auto;
+    margin-top: 10px;
+}
+
+.disabled-devices h3 {
+    margin-bottom: 10px;
+    color: #ffffff;
     text-align: center;
 }
 
@@ -255,6 +298,29 @@ header h1 {
 
 .scan-btn:hover {
     background-color: #555;
+}
+
+.scan-btn:disabled {
+    background-color: #333;
+    cursor: not-allowed;
+}
+
+.device-item {
+    padding: 10px;
+    margin-bottom: 10px;
+    background-color: #2a2a2a;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s, transform 0.2s;
+}
+
+.device-item:hover {
+    background-color: #444;
+}
+
+.device-item.selected {
+    background-color: #555;
+    transform: scale(1.02);
 }
 
 .timestamp {

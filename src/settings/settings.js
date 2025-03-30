@@ -1,42 +1,99 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const scannerTab = document.getElementById('scannerTab');
-    const settingsTab = document.getElementById('settingsTab');
-    const scannerView = document.getElementById('scannerView');
-    const settingsView = document.getElementById('settingsView');
+    const hideWebsiteToggle = document.getElementById('hideWebsiteToggle');
+    const autoOpenToggle = document.getElementById('autoOpenToggle');
+    const debugModeDropdown = document.getElementById('debugModeDropdown');
+    const bypassModeDropdown = document.getElementById('bypassModeDropdown');
+    const runAsAdminToggle = document.getElementById('runAsAdminToggle');
+    const applySettingsBtn = document.getElementById('applySettingsBtn');
+    const confirmationModal = document.getElementById('confirmationModal');
+    const confirmBtn = document.getElementById('confirmBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const changesList = document.getElementById('changesList');
 
-    // Check if the elements exist
-    if (!scannerView || !settingsView) {
-        console.error('Error: scannerView or settingsView is not found in the DOM.');
+    // Check if all elements are properly selected
+    if (!hideWebsiteToggle || !autoOpenToggle || !debugModeDropdown || !bypassModeDropdown || 
+        !runAsAdminToggle || !applySettingsBtn || !confirmationModal || 
+        !confirmBtn || !cancelBtn || !changesList) {
+        console.error('One or more elements are missing in the DOM.');
         return;
     }
 
-    function switchView(view) {
-        if (view === 'scanner') {
-            scannerView.style.display = 'block';
-            settingsView.style.display = 'none';
-            window.location.hash = '#scanner';
-        } else if (view === 'settings') {
-            scannerView.style.display = 'none';
-            settingsView.style.display = 'block';
-            window.location.hash = '#settings';
+    let currentSettings = {};
+
+    async function loadSettings() {
+        try {
+            const response = await fetch('/settings');
+            const settings = await response.json();
+            currentSettings = settings;
+            hideWebsiteToggle.checked = settings.hide_website;
+            autoOpenToggle.checked = settings.auto_open_page;
+            debugModeDropdown.value = settings.debug_mode || 'off';
+            bypassModeDropdown.value = settings.bypass_mode || 'registry';
+            runAsAdminToggle.checked = settings.run_as_admin || false;
+        } catch (error) {
+            console.error('Failed to load settings:', error);
         }
     }
 
-    scannerTab.addEventListener('click', (e) => {
-        e.preventDefault();
-        switchView('scanner');
-    });
+    function showConfirmationModal() {
+        changesList.innerHTML = ''; 
+        const updatedSettings = {
+            hide_website: hideWebsiteToggle.checked,
+            auto_open_page: autoOpenToggle.checked,
+            debug_mode: debugModeDropdown.value,
+            bypass_mode: bypassModeDropdown.value,
+            run_as_admin: runAsAdminToggle.checked,
+        };
 
-    settingsTab.addEventListener('click', (e) => {
-        e.preventDefault();
-        switchView('settings');
-    });
+        for (const [key, value] of Object.entries(updatedSettings)) {
+            if (currentSettings[key] !== value) {
+                const listItem = document.createElement('li');
+                listItem.textContent = `${key.replace(/_/g, ' ')}: ${currentSettings[key]} → ${value}`;
+                changesList.appendChild(listItem);
+            }
+        }
 
-    // Automatically switch view based on the current URL hash
-    const currentHash = window.location.hash;
-    if (currentHash === '#settings') {
-        switchView('settings');
-    } else {
-        switchView('scanner');
+        confirmationModal.style.display = 'flex';
     }
+
+    function hideConfirmationModal() {
+        confirmationModal.style.display = 'none';
+    }
+
+    async function saveSettings() {
+        const updatedSettings = {
+            hide_website: hideWebsiteToggle.checked,
+            auto_open_page: autoOpenToggle.checked,
+            debug_mode: debugModeDropdown.value,
+            bypass_mode: bypassModeDropdown.value,
+            run_as_admin: runAsAdminToggle.checked,
+        };
+    
+        try {
+            const response = await fetch('/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updatedSettings),
+            });
+    
+            if (response.ok) {
+                showNotification('Settings applied successfully!', 'success');  
+                currentSettings = updatedSettings; 
+            } else {
+                showNotification('Failed to apply settings.', 'error');  
+            }
+        } catch (error) {
+            console.error('Failed to save settings:', error);
+            showNotification('An error occurred while saving settings.', 'error');  
+        }
+    }
+
+    confirmBtn.addEventListener('click', () => {
+        hideConfirmationModal();
+        saveSettings();
+    });
+
+    cancelBtn.addEventListener('click', hideConfirmationModal);
+    applySettingsBtn.addEventListener('click', showConfirmationModal);
+    loadSettings();
 });

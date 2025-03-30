@@ -1,10 +1,16 @@
-import subprocess
 import platform
 import concurrent.futures
 import socket
 import os
+import sys
+import logging
+import subprocess
 from datetime import datetime
 from functools import lru_cache
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 try:
     import netifaces
@@ -66,14 +72,54 @@ def get_mac_address(ip):
     except Exception:
         return 'Unknown'
 
-@lru_cache(maxsize=None)
-def get_hostname(ip):
+# trys several ways to get hostname from ip
+# 1. socket.gethostbyaddr 
+# 2. socket.getnameinfo
+# 3. nslookup command
+@lru_cache(maxsize=128)
+def get_hostname(ip, timeout=1):
+    hostname = None
     try:
-        return socket.gethostbyaddr(ip)[0]
-    except (socket.herror, socket.gaierror):
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(socket.gethostbyaddr, ip)
+            hostname = future.result(timeout=timeout)[0]
+            return hostname
+    except (socket.herror, socket.gaierror, concurrent.futures.TimeoutError, OSError):
+        pass
+    try:
+        name, _ = socket.getnameinfo((ip, 0), socket.NI_NAMEREQD)
+        if name != ip:
+            hostname = name
+            return hostname
+    except (socket.gaierror, OSError):
+        pass
+    try:
+        cmd = ["nslookup", ip] if sys.platform != "win32" else ["nslookup", ip]
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=True
+        )
+        for line in result.stdout.split('\n'):
+            if "name =" in line:
+                hostname = line.split('=')[-1].strip().rstrip('.')
+                break
+            if "Name:" in line:
+                hostname = line.split(':')[-1].strip().rstrip('.')
+                break
+        if hostname:
+            return hostname
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        pass
+    if hostname is None:
         return 'Unknown'
 
-def load_oui_data(oui_file='oui.txt'):
+def load_oui_data():
+    appdata_location = os.path.join(os.getenv('APPDATA'), "ayosbypasser")
+    oui_file = os.path.join(appdata_location, "oui.txt")
+    
     oui_dict = {}
     if os.path.exists(oui_file):
         with open(oui_file, 'r', encoding='utf-8') as f:
@@ -105,12 +151,20 @@ def resolve_vendors(ips, oui_dict):
 
 def resolve_hostnames(ips):
     hostnames = {}
+    failed_count = 0
 
     def resolve(ip):
-        hostnames[ip] = get_hostname(ip)
+        nonlocal failed_count
+        hostname = get_hostname(ip)
+        if hostname == 'Unknown':
+            failed_count += 1
+        hostnames[ip] = hostname
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
         executor.map(resolve, ips)
+
+    if failed_count > 0:
+        print(f"Failed to resolve hostnames for {failed_count} IP addresses.")
 
     return hostnames
 
