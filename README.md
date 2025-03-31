@@ -1,8 +1,3 @@
-network related thing
-
-- currently shows/gathers the following
-  -  IP address, MAC Address, Device Hostname, and Device Vendor
-
 ## how to use
 
 ### running source
