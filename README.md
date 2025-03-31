@@ -15,6 +15,8 @@
 
 ## how to use
 
+download lates version pre-compiled executable [here](https://github.com/countervolts/network-related-thing/releases)
+
 ### requirements
 
 - python 3.10 or higher
