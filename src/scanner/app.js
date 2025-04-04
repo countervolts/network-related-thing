@@ -10,21 +10,22 @@ function showNotification(message, type = 'success') {
     setTimeout(() => notification.remove(), 3000);
 }
 
+let disabledDevicesBox;
+
 document.addEventListener('DOMContentLoaded', () => {
     const basicBtn = document.getElementById('basicScanBtn');
     const fullBtn = document.getElementById('fullScanBtn');
     const resultsBody = document.getElementById('resultsBody');
-    const disabledDevicesBox = document.getElementById('disabledDevices');
+    disabledDevicesBox = document.getElementById('disabledDevices');
     const disableBtn = document.getElementById('disableBtn');
     const enableBtn = document.getElementById('enableBtn');
     const lastScanTimestamp = document.getElementById('lastScanTimestamp');
 
-    // Create a section for the user's device and router
     const userDeviceSection = document.createElement('div');
     userDeviceSection.id = 'userDeviceSection';
-    userDeviceSection.style.backgroundColor = '#1e1e1e'; // Match the background color
+    userDeviceSection.style.backgroundColor = '#1e1e1e'; 
     userDeviceSection.style.padding = '10px';
-    userDeviceSection.style.borderBottom = '1px solid #444'; // Add a separator
+    userDeviceSection.style.borderBottom = '1px solid #444';
     userDeviceSection.innerHTML = `
         <h3 style="margin: 0; color: #ffffff;">Your Device and Router</h3>
         <div id="userDeviceList" class="results-body"></div>
@@ -151,31 +152,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const response = await fetch(`http://localhost:5000/${endpoint}`);
-            console.log(`Response received for ${scanType}:`, response); 
+            console.log(`Response received for ${scanType}:`, response);
 
             if (!response.ok) {
                 throw new Error(`Failed to perform ${scanType}. Status: ${response.status}`);
             }
 
             const data = await response.json();
-            console.log(`Data received for ${scanType}:`, data)
+            console.log(`Data received for ${scanType}:`, data);
 
             const results = Array.isArray(data) ? data : Array.isArray(data.results) ? data.results : [];
-            resultsBody.innerHTML = ''; 
-            userDeviceList.innerHTML = ''; 
+            resultsBody.innerHTML = '';
+            userDeviceList.innerHTML = '';
 
             results.forEach(device => {
+                // Check if the device is in the disabledDevices list
+                const isDisabled = disabledDevices.some(d => d.mac === device.mac);
+
                 if (device.is_local || device.is_gateway) {
-                    createDeviceItem(device, false, true); 
-                } else if (!disabledDevices.some(d => d.mac === device.mac)) {
-                    createDeviceItem(device, false); 
+                    createDeviceItem(device, false, true); // Add to the user's device section
+                } else if (!isDisabled) {
+                    createDeviceItem(device, false); // Add to the active devices list
+                } else {
+                    console.log(`Skipping disabled device: ${device.mac}`);
                 }
             });
 
             saveLastScanDetails(scanType, results);
             showNotification(`${scanType} completed successfully. Found ${results.length} devices.`, 'success');
         } catch (error) {
-            console.error(`${scanType} failed:`, error); 
+            console.error(`${scanType} failed:`, error);
             showNotification(`${scanType} failed: ${error.message}`, 'error');
         }
 
@@ -218,7 +224,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.log(`Server response for disabling device ${device.mac}:`, data);
                     showNotification(data.message, 'success');
 
-                    // Move the device to the Disabled Devices box
                     const deviceElement = [...resultsBody.children].find(
                         el => el.dataset.mac === device.mac
                     );
@@ -230,8 +235,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     console.log(`Adding device ${device.mac} to Disabled Devices box.`);
-                    createDeviceItem(device, true); // Add to the Disabled Devices box
-                    disabledDevices.push(device); // Add to the disabled devices array
+                    createDeviceItem(device, true);
+                    disabledDevices.push(device); 
                 } else {
                     const errorData = await response.json();
                     console.error(`Failed to disable device ${device.mac}:`, errorData);
@@ -301,8 +306,31 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('Disabled devices updated:', disabledDevices);
     });
 
-    // Load disabled devices from localStorage on page load
-    disabledDevices.forEach(device => createDeviceItem(device, true));
+    async function loadDisabledDevices() {
+        try {
+            const response = await fetch('/network/disabled-devices');
+            const serverDisabledDevices = await response.json();
+
+            // Update local storage to match the server's state
+            localStorage.setItem('disabledDevices', JSON.stringify(serverDisabledDevices));
+            disabledDevices = serverDisabledDevices;
+
+            // Clear the disabled devices box
+            disabledDevicesBox.innerHTML = '';
+
+            // Populate the disabled devices box
+            disabledDevices.forEach(device => {
+                createDeviceItem(device, true); // Add to the Disabled Devices box
+            });
+
+            console.log('Disabled devices synchronized with the server.');
+        } catch (error) {
+            console.error('Failed to load disabled devices:', error);
+        }
+    }
+
+    // Load disabled devices on page load
+    loadDisabledDevices();
 
     // Load last scan details and results from localStorage on page load
     updateLastScanDisplay(lastScanDetails);
@@ -414,4 +442,34 @@ document.addEventListener('DOMContentLoaded', () => {
         lastScanTimestamp.textContent = '- Previous scan: None';
         showNotification('Scanner tab updated after clearing local storage.', 'info');  
     });
+
+    checkServerStart();
+});
+
+function clearDisabledDevices() {
+    console.log('Clearing disabled devices from local storage.');
+    localStorage.removeItem('disabledDevices');
+    disabledDevices = [];
+    if (disabledDevicesBox) {
+        disabledDevicesBox.innerHTML = '';
+    }
+}
+
+// Clear disabled devices when the server starts
+async function checkServerStart() {
+    try {
+        const response = await fetch('/server/start');
+        if (response.ok) {
+            const data = await response.json();
+            console.log(data.message);
+            clearDisabledDevices();
+        }
+    } catch (error) {
+        console.error('Failed to check server start:', error);
+    }
+}
+
+// Call this function on page load
+document.addEventListener('DOMContentLoaded', () => {
+    checkServerStart();
 });

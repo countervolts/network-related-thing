@@ -1,0 +1,7 @@
+flask-Cors
+netifaces
+requests
+pywin32
+getmac
+scapy
+flask

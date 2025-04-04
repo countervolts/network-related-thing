@@ -14,11 +14,10 @@ document.getElementById('historyTab').addEventListener('click', async () => {
             throw new Error('Failed to fetch history data.');
         }
 
-        const scanHistory = await scanHistoryResponse.json();
-        const bypassHistory = await bypassHistoryResponse.json();
+        const scanHistory = (await scanHistoryResponse.json()) || []; // Ensure scanHistory is an array
+        const bypassHistory = (await bypassHistoryResponse.json()) || []; // Ensure bypassHistory is an array
 
         scanHistory.sort((a, b) => new Date(b.time) - new Date(a.time));
-
         bypassHistory.sort((a, b) => new Date(b.time) - new Date(a.time));
 
         const formatTime = (time) => {
@@ -56,7 +55,7 @@ document.getElementById('historyTab').addEventListener('click', async () => {
                     <strong>New MAC:</strong> ${item.newMac} <br>
                     <strong>Method:</strong> ${item.method}
                 </div>
-                <button onclick="revertMac('${item.transport}', '${item.previousMac}')">Revert</button>
+                <button onclick="revertMac('${item.transport}', '${item.previousMac}', '${item.newMac}')">Revert</button>
             </div>
         `).join('');
     } catch (error) {
@@ -83,7 +82,7 @@ async function deleteScan(id) {
     }
 }
 
-function revertMac(transport, oldMac) {
+function revertMac(transport, oldMac, newMac) {
     fetch('/bypass/revert-mac', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -92,7 +91,8 @@ function revertMac(transport, oldMac) {
     .then(response => response.json())
     .then(data => {
         if (data.error) throw new Error(data.error);
-        showNotification(data.message, 'success');
+        showNotification(`MAC address reverted successfully!`, 'success');
+        showNotification(`Old MAC: ${newMac} → Reverted to: ${oldMac}`, 'info');
     })
     .catch(error => {
         console.error('Failed to revert MAC address:', error);

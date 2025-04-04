@@ -66,47 +66,82 @@ header h1 {
     }
 }
 
-
+/* Modernized navigation container */
 .nav-container {
     position: fixed;
     top: 0;
     left: 0;
-    width: 200px;
+    width: 220px;
     height: 100%;
-    background-color: #1e1e1e;
-    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2);
+    background-color: #1f1f1f; /* Slightly lighter background */
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.3); /* Add a subtle shadow */
     display: flex;
     flex-direction: column;
     padding: 20px;
+    z-index: 1000; /* Ensure it stays on top */
 }
 
 .nav-menu {
     list-style: none;
     padding: 0;
     margin: 0;
-}
-
-.nav-menu ul {
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: 15px; /* Add spacing between tabs */
 }
 
 .nav-menu li {
-    font-size: 1em;
+    font-size: 1.1em;
+    font-weight: bold;
 }
 
 .nav-menu a {
     text-decoration: none;
     color: #e0e0e0;
-    padding: 10px 15px;
+    padding: 12px 20px;
     border-radius: 8px;
-    transition: background-color 0.3s, color 0.3s;
+    background-color: transparent; /* Transparent by default */
+    transition: background-color 0.3s, color 0.3s, transform 0.2s, box-shadow 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 10px; /* Add spacing for potential icons */
 }
 
 .nav-menu a:hover {
-    background-color: #444;
+    background-color: #444; /* Slightly lighter on hover */
     color: #fff;
+    transform: translateX(5px); /* Slide slightly to the right */
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2); /* Add a subtle shadow */
+}
+
+.nav-menu a.active {
+    background-color: #007bff; /* Highlight active tab */
+    color: #fff;
+    box-shadow: 0 4px 8px rgba(0, 123, 255, 0.3); /* Add a glow effect */
+    transform: translateX(0); /* Keep active tab in place */
+}
+
+.nav-menu a.active:hover {
+    transform: translateX(5px); /* Allow hover animation for active tab */
+}
+
+/* Add optional icons for tabs */
+.nav-menu a::before {
+    content: '';
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: #007bff; /* Default icon color */
+    transition: background-color 0.3s;
+}
+
+.nav-menu a:hover::before {
+    background-color: #fff; /* Change icon color on hover */
+}
+
+.nav-menu a.active::before {
+    background-color: #fff; /* White dot for active tab */
 }
 
 .container {

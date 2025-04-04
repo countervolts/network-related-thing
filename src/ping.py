@@ -1,5 +1,6 @@
 import platform
 import concurrent.futures
+import time
 import socket
 import os
 import sys
@@ -72,49 +73,33 @@ def get_mac_address(ip):
     except Exception:
         return 'Unknown'
 
-# trys several ways to get hostname from ip
-# 1. socket.gethostbyaddr 
-# 2. socket.getnameinfo
-# 3. nslookup command
+hostname_counters = {
+    "gethostbyaddr": 0,
+    "unknown": 0
+}
+
 @lru_cache(maxsize=128)
 def get_hostname(ip, timeout=1):
+    global hostname_counters
     hostname = None
     try:
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future = executor.submit(socket.gethostbyaddr, ip)
             hostname = future.result(timeout=timeout)[0]
+            hostname_counters["gethostbyaddr"] += 1
             return hostname
     except (socket.herror, socket.gaierror, concurrent.futures.TimeoutError, OSError):
         pass
-    try:
-        name, _ = socket.getnameinfo((ip, 0), socket.NI_NAMEREQD)
-        if name != ip:
-            hostname = name
-            return hostname
-    except (socket.gaierror, OSError):
-        pass
-    try:
-        cmd = ["nslookup", ip] if sys.platform != "win32" else ["nslookup", ip]
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=True
-        )
-        for line in result.stdout.split('\n'):
-            if "name =" in line:
-                hostname = line.split('=')[-1].strip().rstrip('.')
-                break
-            if "Name:" in line:
-                hostname = line.split(':')[-1].strip().rstrip('.')
-                break
-        if hostname:
-            return hostname
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        pass
-    if hostname is None:
-        return 'Unknown'
+
+    # If no method succeeded
+    hostname_counters["unknown"] += 1
+    return 'Unknown'
+
+# Log the counters after the scan
+def log_hostname_counters():
+    print("\033[94m[DEBUG] Hostname resolution stats:\033[0m")
+    for method, count in hostname_counters.items():
+        print(f"  {method}: {count}")
 
 def load_oui_data():
     appdata_location = os.path.join(os.getenv('APPDATA'), "ayosbypasser")
@@ -166,36 +151,89 @@ def resolve_hostnames(ips):
     if failed_count > 0:
         print(f"Failed to resolve hostnames for {failed_count} IP addresses.")
 
+    # Log the hostname resolution stats
+    log_hostname_counters()
+
     return hostnames
 
 def scan_network(subnet, scan_hostname=False, scan_vendor=False):
+    start_time = time.time()
     online_devices = []
     local_ips = get_local_ips()
     gateway = get_default_gateway()
-    
+
+    # Get the base IP from the subnet
     base_ip = '.'.join(subnet.split('.')[:3])
-    ips = sorted([f"{base_ip}.{i}" for i in range(1, 255)], key=lambda ip: int(ip.split('.')[-1]))
+    
+    # Generate all IP addresses to scan
+    ips = [f"{base_ip}.{i}" for i in range(1, 255)]
+    
+    # Optimize: Prioritize common IP addresses first (gateways, etc.)
+    priority_ips = [f"{base_ip}.1", f"{base_ip}.254"]
+    common_ranges = [i for i in range(1, 20)]
+    
+    # Reorder IPs to check likely candidates first
+    for ip_suffix in priority_ips + common_ranges:
+        target_ip = f"{base_ip}.{ip_suffix}"
+        if target_ip in ips:
+            ips.remove(target_ip)
+            ips.insert(0, target_ip)
+    
+    def ping_ips(ip_list):
+        results = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
+            futures = {executor.submit(ping, ip): ip for ip in ip_list}
+            for future in concurrent.futures.as_completed(futures):
+                ip, status = future.result()
+                if status:
+                    results.append(ip)
+        return results
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
-        futures = {executor.submit(ping, ip): ip for ip in ips}
+    # Optimize batch size for better performance
+    batch_size = 32
+    ip_batches = [ips[i:i + batch_size] for i in range(0, len(ips), batch_size)]
+    
+    # Increase worker count for batch processing
+    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+        futures = [executor.submit(ping_ips, batch) for batch in ip_batches]
         for future in concurrent.futures.as_completed(futures):
-            ip, status = future.result()
-            if status:
-                online_devices.append(ip)
-
-    online_devices = sorted(online_devices, key=lambda ip: int(ip.split('.')[-1]))
-
-    hostnames = resolve_hostnames(online_devices) if scan_hostname else {}
-
+            online_devices.extend(future.result())
+    
+    # Resolve hostnames and vendors in parallel
+    hostnames = {}
+    vendors = {}
     oui_dict = load_oui_data() if scan_vendor else {}
-    vendors = resolve_vendors(online_devices, oui_dict) if scan_vendor else {}
 
+    def resolve_hostname(ip):
+        return ip, get_hostname(ip)
+
+    def resolve_vendor(ip):
+        mac = get_mac_address(ip)
+        return ip, get_vendor(mac, oui_dict)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+        if scan_hostname:
+            hostname_futures = {executor.submit(resolve_hostname, ip): ip for ip in online_devices}
+        if scan_vendor:
+            vendor_futures = {executor.submit(resolve_vendor, ip): ip for ip in online_devices}
+
+        if scan_hostname:
+            for future in concurrent.futures.as_completed(hostname_futures):
+                ip, hostname = future.result()
+                hostnames[ip] = hostname
+
+        if scan_vendor:
+            for future in concurrent.futures.as_completed(vendor_futures):
+                ip, vendor = future.result()
+                vendors[ip] = vendor
+
+    # Build the results
     results = []
     for ip in online_devices:
         mac = get_mac_address(ip)
-        hostname = hostnames.get(ip, 'Skipped') if scan_hostname else 'Skipped'
-        vendor = vendors.get(ip, 'Skipped') if scan_vendor else 'Skipped'
-        
+        hostname = hostnames.get(ip, 'Unknown') if scan_hostname else 'Skipped'
+        vendor = vendors.get(ip, 'Unknown') if scan_vendor else 'Skipped'
+
         device_info = {
             'ip': ip,
             'mac': mac,
@@ -206,5 +244,15 @@ def scan_network(subnet, scan_hostname=False, scan_vendor=False):
             'timestamp': datetime.now().isoformat()
         }
         results.append(device_info)
+
+    # Sort results by IP address, ignoring the router's IP
+    results = sorted(
+        results,
+        key=lambda device: tuple(map(int, device['ip'].split('.'))) if device['ip'] != gateway else (255, 255, 255, 255)
+    )
+
+    end_time = time.time()
+    if logger.level <= logging.DEBUG:
+        print(f"\033[94m[DEBUG] Full network scan completed in {end_time - start_time:.2f} seconds\033[0m")
 
     return results

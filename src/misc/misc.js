@@ -131,4 +131,33 @@ document.addEventListener('DOMContentLoaded', () => {
             showNotification('An error occurred while opening the Storage Folder.', 'error');
         }
     });
+
+    async function updateHistorySizes() {
+        try {
+            const response = await fetch('/misc/history-sizes');
+            const sizes = await response.json();
+
+            if (response.ok) {
+                // Convert sizes to a human-readable format
+                const formatSize = (size) => {
+                    if (size < 1024) return `${size} B`;
+                    if (size < 1024 * 1024) return `${(size / 1024).toFixed(2)} KB`;
+                    return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+                };
+
+                // Update dropdown options with sizes
+                clearHistoryDropdown.innerHTML = `
+                    <option value="scan">Scan History (${formatSize(sizes.scan)})</option>
+                    <option value="bypass">Bypass History (${formatSize(sizes.bypass)})</option>
+                    <option value="all">All History (${formatSize(sizes.all)})</option>
+                `;
+            } else {
+                console.error('Failed to fetch history sizes:', sizes.error);
+            }
+        } catch (error) {
+            console.error('Error fetching history sizes:', error);
+        }
+    }
+
+    updateHistorySizes();
 });

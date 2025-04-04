@@ -15,7 +15,7 @@
 
 ## how to use
 
-download lates version pre-compiled executable [here](https://github.com/countervolts/network-related-thing/releases)
+download latest version pre-compiled executable [here](https://github.com/countervolts/network-related-thing/releases)
 
 ### requirements
 
@@ -41,13 +41,13 @@ python -m pip install pyinstaller
 4. run the following command to build the executable:
 
 ```sh
-pyinstaller server.py --onefile --name=server --icon=favicon.ico --clean --noconfirm \
---add-data "index.html;." --add-data "favicon.ico;." \
---add-data "src\bypass;src\bypass" --add-data "src\history;src\history" \
---add-data "src\misc;src\misc" --add-data "src\scanner;src\scanner" \
+pyinstaller server.py --onefile --name=server --icon=favicon.ico --clean --noconfirm ^
+--add-data "index.html;." --add-data "favicon.ico;." ^
+--add-data "src\bypass;src\bypass" --add-data "src\history;src\history" ^
+--add-data "src\misc;src\misc" --add-data "src\scanner;src\scanner" ^
 --add-data "src\settings;src\settings"
 ```
 
-wait for it to compile.
+press enter, wait for it to compile.
 
 5. go into `dist` and run the executable

@@ -14,17 +14,16 @@
     <div class="nav-container">
         <nav class="nav-menu">
             <ul>
-                <li><a href="#scanner" id="scannerTab">Scanner</a></li>
-                <li><a href="#bypass" id="bypassTab">Bypass</a></li>
-                <li><a href="#history" id="historyTab">History</a></li>
-                <li><a href="#settings" id="settingsTab">Settings</a></li>
-                <li><a href="#misc" id="miscTab">Misc</a></li>
+                <a href="#scanner" id="scannerTab">Scanner</a>
+                <a href="#bypass" id="bypassTab">Bypass</a>
+                <a href="#history" id="historyTab">History</a>
+                <a href="#misc" id="miscTab">Misc</a>
+                <a href="#settings" id="settingsTab">Settings</a>
             </ul>
         </nav>
     </div>
 
     <div class="container">
-        <!-- Scanner View -->
         <div id="scannerView" class="view" style="display: block;">
             <div class="controls">
                 <h1 id="scanner" style="color: white;">Network Scanner</h1>
@@ -53,7 +52,6 @@
             </div>
         </div>
 
-        <!-- Bypass View -->
         <div id="bypassView" class="view" style="display: none;">
             <h1 id="bypass">MAC Address Bypass</h1>
             <div class="bypass-section">
@@ -63,7 +61,6 @@
             </div>
         </div>
 
-        <!-- History View -->
         <div id="historyView" class="view" style="display: none;">
             <h1>History</h1>
             <div class="history-container">
@@ -78,7 +75,6 @@
             </div>
         </div>
 
-        <!-- Settings View -->
         <div id="settingsView" class="view" style="display: none;">
             <h1>Settings</h1>
             <div id="settingsContent">
@@ -100,7 +96,7 @@
                 <div class="setting-item">
                     <label for="runAsAdminToggle" class="setting-label">
                         <span>Run as Admin</span>
-                        <p class="setting-description">If enabled, the application will restart with administrative privileges.</p>
+                        <p class="setting-description">If enabled, the application will run with administrative privileges. (Restart required)</p>
                     </label>
                     <input type="checkbox" id="runAsAdminToggle" class="toggle">
                 </div>
@@ -134,7 +130,6 @@
             </div>
         </div>
 
-        <!-- Miscellaneous View -->
         <div id="miscView" class="view" style="display: none;">
             <h1>Miscellaneous</h1>
             <div id="miscContent">
@@ -190,7 +185,7 @@
         </div>
 
         <div id="notificationContainer" class="notification-container"></div>
-        <div class="version">v1.0</div>
+        <div class="version">v1.1</div>
     </div>
 
     <script src="src/scanner/app.js"></script>
@@ -210,26 +205,27 @@
                     '#settings': 'settingsView',
                     '#misc': 'miscView'
                 };
-
+        
                 Object.values(views).forEach(viewId => {
                     document.getElementById(viewId).style.display = 'none';
                 });
+        
                 const viewId = views[hash];
                 if (viewId) {
                     document.getElementById(viewId).style.display = 'block';
                 }
-
-                const scannerView = document.getElementById('scannerView');
-                const resultsBody = document.getElementById('resultsBody');
-
-                if (!scannerView || !resultsBody) {
-                    console.error('Initialization error: scannerView or resultsBody is missing from the DOM.');
-                } else {
-                    console.log('scannerView and resultsBody are properly initialized.');
-                }
+        
+                document.querySelectorAll('.nav-menu a').forEach(link => {
+                    if (link.getAttribute('href') === hash) {
+                        link.classList.add('active');
+                    } else {
+                        link.classList.remove('active');
+                    }
+                });
             }
-
+        
             window.addEventListener('hashchange', showViewFromHash);
+        
             showViewFromHash();
         });
     </script>

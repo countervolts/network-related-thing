@@ -84,8 +84,8 @@ def get_active_network_adapter():
         for line in output.splitlines():
             if "Connected" in line:
                 parts = line.split()
-                adapter_type = parts[2]  # Type (e.g., Dedicated, Wireless)
-                adapter_name = " ".join(parts[3:])  # Adapter name
+                adapter_type = parts[2]
+                adapter_name = " ".join(parts[3:])
                 if adapter_type.lower() in ["dedicated", "wired"]:
                     return "Ethernet", adapter_name
                 elif adapter_type.lower() == "wireless":
@@ -162,9 +162,6 @@ def rand0m_hex():
     return 'DE' + ''.join(random.choices('0123456789ABCDEF', k=10))
 
 def get_adapter_name(sub_name):
-    """
-    Get adapter name from registry with retries.
-    """
     key_path = f"SYSTEM\\ControlSet001\\Control\\Class\\{{4d36e972-e325-11ce-bfc1-08002be10318}}\\{sub_name}"
     for attempt in range(3):
         try:
@@ -177,39 +174,43 @@ def get_adapter_name(sub_name):
     return None
 
 def init_bypass(sub_name):
-    """
-    Main bypass function with proper network reset handling.
-    """
     key_path = f"SYSTEM\\ControlSet001\\Control\\Class\\{{4d36e972-e325-11ce-bfc1-08002be10318}}\\{sub_name}"
     adapter_name = get_adapter_name(sub_name)
     
     if not adapter_name:
-        logger.error("Could not retrieve adapter name")
+        print("\033[94m[DEBUG] [ERROR] Could not retrieve adapter name\033[0m")
         return None
+
+    print(f"\033[94m[DEBUG] Starting bypass process for adapter: {adapter_name}\033[0m")
+    start_time = time.time()  # Start timing
 
     for attempt in range(3):
         value_data = rand0m_hex()
         try:
             with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_ALL_ACCESS) as key:
-                # Set new MAC address
                 winreg.SetValueEx(key, 'NetworkAddress', 0, winreg.REG_SZ, value_data)
-                logger.info(f"Registry updated with new MAC: {value_data}")
+                print(f"\033[94m[DEBUG] Attempt {attempt+1}: Updated registry with new MAC: {value_data}\033[0m")
                 
-                # Restart network interface
                 if restart_all_adapters():
-                    # Allow time for network reinitialization
+                    end_time = time.time()  # End timing
+                    elapsed_time = end_time - start_time
+                    print(f"\033[94m[DEBUG] Attempt {attempt+1}: Successfully bypassed MAC address for adapter: {adapter_name}\033[0m")
+                    print(f"\033[94m[DEBUG] MAC address changed successfully to {value_data}\033[0m")
+                    print(f"\033[94m[DEBUG] Bypass process completed in {elapsed_time:.2f} seconds\033[0m")
                     time.sleep(5)
                     return value_data
                 
-                logger.warning(f"MAC change attempt {attempt+1} failed")
+                print(f"\033[94m[DEBUG] Attempt {attempt+1}: MAC change failed for adapter: {adapter_name}\033[0m")
                 time.sleep(2)
                 
         except PermissionError:
-            logger.error("Permission denied - run as administrator")
+            print("\033[94m[DEBUG] [ERROR] Permission denied - run as administrator\033[0m")
             break
         except Exception as e:
-            logger.error(f"Registry update failed: {str(e)}")
+            print(f"\033[94m[DEBUG] Attempt {attempt+1}: Registry update failed: {str(e)}\033[0m")
             time.sleep(1)
     
-    logger.error("All MAC change attempts failed")
+    end_time = time.time()  # End timing
+    elapsed_time = end_time - start_time
+    print(f"\033[94m[DEBUG] [ERROR] All MAC change attempts failed. Total time: {elapsed_time:.2f} seconds\033[0m")
     return None

@@ -10,6 +10,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const cancelBtn = document.getElementById('cancelBtn');
     const changesList = document.getElementById('changesList');
 
+    // Store original console methods
+    const originalConsole = {
+        log: console.log,
+        warn: console.warn,
+        error: console.error,
+        info: console.info,
+        debug: console.debug,
+    };
+
     // Check if all elements are properly selected
     if (!hideWebsiteToggle || !autoOpenToggle || !debugModeDropdown || !bypassModeDropdown || 
         !runAsAdminToggle || !applySettingsBtn || !confirmationModal || 
@@ -30,8 +39,30 @@ document.addEventListener('DOMContentLoaded', () => {
             debugModeDropdown.value = settings.debug_mode || 'off';
             bypassModeDropdown.value = settings.bypass_mode || 'registry';
             runAsAdminToggle.checked = settings.run_as_admin || false;
+
+            applyDebugMode(settings.debug_mode);
         } catch (error) {
             console.error('Failed to load settings:', error);
+        }
+    }
+
+    function applyDebugMode(debugMode) {
+        if (debugMode === 'off') {
+            // Override console methods to suppress output
+            console.log = console.warn = console.error = console.info = console.debug = () => {};
+        } else if (debugMode === 'basic') {
+            // Restore only essential console methods
+            console.log = originalConsole.log;
+            console.warn = originalConsole.warn;
+            console.error = originalConsole.error;
+            console.info = () => {}; 
+            console.debug = () => {}; 
+        } else if (debugMode === 'full') {
+            console.log = originalConsole.log;
+            console.warn = originalConsole.warn;
+            console.error = originalConsole.error;
+            console.info = originalConsole.info;
+            console.debug = originalConsole.debug;
         }
     }
 
@@ -79,6 +110,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (response.ok) {
                 showNotification('Settings applied successfully!', 'success');  
                 currentSettings = updatedSettings; 
+
+                // Apply debug mode settings dynamically
+                applyDebugMode(updatedSettings.debug_mode);
             } else {
                 showNotification('Failed to apply settings.', 'error');  
             }

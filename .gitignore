@@ -2,8 +2,6 @@
 build/
 dist/
 .vscode/
-historystorage/
-*.json
-*.pyc
-*.txt
 *.spec
+changelog.md
+tester.py

@@ -11,12 +11,14 @@ import logging
 import socket
 import ctypes
 import winreg
+import signal
 import json
 import time
 import uuid
 import sys
 import re
 import os
+import signal  # Add this import for handling termination signals
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -41,12 +43,28 @@ DEFAULT_SETTINGS = {
 }
 
 network_controller = GarpSpoofer()
-    
+
+DISABLED_DEVICES = []
+DISABLED_DEVICES_FILE = os.path.join(APPDATA_LOCATION, "disabled_devices.json")
+disabled_devices_cleared = False
+
+def save_disabled_devices():
+    """Save the disabled devices list to a file."""
+    with open(DISABLED_DEVICES_FILE, "w") as f:
+        json.dump(DISABLED_DEVICES, f, indent=4)
+
+def load_disabled_devices():
+    """Load the disabled devices list from a file."""
+    if os.path.exists(DISABLED_DEVICES_FILE):
+        with open(DISABLED_DEVICES_FILE, "r") as f:
+            return json.load(f)
+    return []
+
 @app.route('/misc/download-oui', methods=['GET'])
 def download_oui():
     try:
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36" # doesnt work without this
         }
         response = requests.get(OUI_URL, headers=headers, timeout=10)
         response.raise_for_status()
@@ -57,6 +75,20 @@ def download_oui():
         return jsonify({"message": f"OUI file downloaded successfully to {oui_file_path}."})
     except Exception as e:
         return jsonify({"error": f"Failed to download OUI file: {str(e)}"}), 500
+
+def load_history(file_path):
+    start_time = time.time()
+    if os.path.exists(file_path):
+        with open(file_path, "r") as f:
+            try:
+                data = json.load(f)
+                end_time = time.time()
+                # print(f"\033[94m[DEBUG] Load history duration: {end_time - start_time:.2f} seconds\033[0m")
+                return data if isinstance(data, list) else []  
+            except json.JSONDecodeError:
+                print("\033[91m[ERROR] Failed to decode JSON. Returning empty list.\033[0m")
+                return []  
+    return [] 
 
 @app.route('/misc/clear-history', methods=['POST'])
 def clear_history():
@@ -99,6 +131,9 @@ def disable_device():
         if not network_controller.validate_target(ip, mac):
             return jsonify({"error": "MAC validation failed"}), 400
 
+        # Add the device to the temporary disabled devices list
+        DISABLED_DEVICES.append({"ip": ip, "mac": mac})
+        save_disabled_devices()  # Save the updated list
         network_controller.block_device(ip, mac)
         return jsonify({"message": f"Device {mac} ({ip}) disabled successfully."})
     except Exception as e:
@@ -108,11 +143,29 @@ def disable_device():
 def enable_device():
     try:
         data = request.json
-        mac = data['mac']  # Use MAC address instead of IP
+        mac = data['mac']
+
+        # Remove the device from the disabled devices list
+        global DISABLED_DEVICES
+        DISABLED_DEVICES = [d for d in DISABLED_DEVICES if d['mac'] != mac]
+        save_disabled_devices()  # Save the updated list
+
         network_controller.restore_device(mac)
         return jsonify({"message": f"Device with MAC {mac} re-enabled successfully."})
     except Exception as e:
         return jsonify({"error": f"Failed to enable device: {str(e)}"}), 500
+
+@app.route('/network/disabled-devices', methods=['GET'])
+def get_disabled_devices():
+    return jsonify(DISABLED_DEVICES)
+
+@app.before_request
+def clear_disabled_devices_on_startup():
+    global DISABLED_DEVICES, disabled_devices_cleared
+    if not disabled_devices_cleared:
+        DISABLED_DEVICES = load_disabled_devices()
+        disabled_devices_cleared = True
+        print("\033[93m[INFO] Disabled devices list loaded on server startup.\033[0m")
 
 def get_subnet():
     default_gateway = get_default_gateway()
@@ -127,8 +180,17 @@ def load_settings():
         with open(SETTINGS_FILE, "w") as f:
             json.dump(DEFAULT_SETTINGS, f, indent=4)
         return DEFAULT_SETTINGS
+
     with open(SETTINGS_FILE, "r") as f:
-        return json.load(f)
+        user_settings = json.load(f)
+
+    updated_settings = {key: user_settings.get(key, DEFAULT_SETTINGS[key]) for key in DEFAULT_SETTINGS}
+
+    if updated_settings != user_settings:
+        with open(SETTINGS_FILE, "w") as f:
+            json.dump(updated_settings, f, indent=4)
+
+    return updated_settings
 
 settings = load_settings()
 
@@ -157,18 +219,12 @@ def get_json_file(filename):
     except Exception as e:
         return jsonify({"error": f"Failed to fetch JSON file: {str(e)}"}), 500
 
-def load_history(file_path):
-    if os.path.exists(file_path):
-        with open(file_path, "r") as f:
-            return json.load(f)
-    return []
-
 def save_history(file_path, data):
     with open(file_path, "w") as f:
         json.dump(data, f, indent=4)
 
 def log_scan_history(scan_type, device_count, results):
-    history = load_history(SCAN_HISTORY_FILE)
+    history = load_history(SCAN_HISTORY_FILE) or [] 
     scan_id = str(uuid.uuid4())
     raw_json_path = os.path.join(HISTORY_FOLDER, f"{scan_id}.json")
     with open(raw_json_path, "w") as f:
@@ -183,7 +239,7 @@ def log_scan_history(scan_type, device_count, results):
     save_history(SCAN_HISTORY_FILE, history)
 
 def log_bypass_history(previous_mac, new_mac, method, transport):
-    history = load_history(BYPASS_HISTORY_FILE)
+    history = load_history(BYPASS_HISTORY_FILE) or []
     history.append({
         "time": time.strftime("%Y-%m-%d %H:%M:%S"),
         "previousMac": previous_mac,
@@ -196,11 +252,13 @@ def log_bypass_history(previous_mac, new_mac, method, transport):
 @app.route('/bypass/revert-mac', methods=['POST'])
 def revert_mac():
     try:
+        start_time = time.time()
         data = request.json
         transport_name = data['transport']
         old_mac = data['mac']
 
-        # Update the registry with the old MAC address
+        print(f"\033[94m[DEBUG] Starting MAC revert process for transport: {transport_name}\033[0m")
+
         instances = neftcfg_search(transport_name)
         if not instances:
             return jsonify({"error": "No network configurations found for the specified transport"}), 404
@@ -210,8 +268,14 @@ def revert_mac():
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_ALL_ACCESS) as key:
             winreg.SetValueEx(key, 'NetworkAddress', 0, winreg.REG_SZ, old_mac)
 
+        print(f"\033[94m[DEBUG] Updated registry with original MAC: {old_mac}\033[0m")
+
         # Restart the network adapters
         if restart_all_adapters():
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            print(f"\033[94m[DEBUG] Successfully reverted MAC address for transport: {transport_name}\033[0m")
+            print(f"\033[94m[DEBUG] Revert process completed in {elapsed_time:.2f} seconds\033[0m")
             return jsonify({"message": f"MAC address reverted to {old_mac} and adapters restarted successfully."})
         else:
             return jsonify({"error": "Failed to restart network adapters"}), 500
@@ -350,11 +414,13 @@ def get_bypass_history():
 @app.route('/scan/basic')
 def basic_scan():
     try:
+        start_time = time.time()  
         subnet = get_subnet()
         if settings.get("debug_mode", "off") in ["basic", "full"]:
             print(f"\033[94m[DEBUG] Performing basic scan on subnet: {subnet}\033[0m")
         
         results = scan_network(subnet=subnet, scan_hostname=False, scan_vendor=False) or []
+
 
         if settings.get("debug_mode") == "full":
             print("\033[94m-[DEBUG] Start of request headers-\033[0m")
@@ -368,6 +434,10 @@ def basic_scan():
 
         log_scan_history("Basic", len(results), results)
         print(f"\033[92m[INFO] Basic Scan completed. {len(results)} devices found.\033[0m")
+        
+        end_time = time.time()  
+        print(f"\033[94m[DEBUG] Basic scan duration: {end_time - start_time:.2f} seconds\033[0m")
+        
         return jsonify(results)
     except Exception as e:
         print(f"\033[91m[ERROR] Basic scan failed: {e}\033[0m")
@@ -385,6 +455,7 @@ def clear_console():
 @app.route('/scan/full')
 def full_scan():
     try:
+        start_time = time.time()  
         subnet = get_subnet()
         if settings.get("debug_mode", "off") in ["basic", "full"]:
             print(f"\033[94m[DEBUG] Performing full scan on subnet: {subnet}\033[0m")
@@ -409,6 +480,9 @@ def full_scan():
         log_scan_history("Full", len(results), results)
         print(f"\033[92m[INFO] Full Scan completed. {len(results)} devices found.\033[0m")
         
+        end_time = time.time() 
+        print(f"\033[94m[DEBUG] Full scan duration: {end_time - start_time:.2f} seconds\033[0m")
+        
         return jsonify({
             "results": results,
             "message": "Full scan completed successfully.",
@@ -417,6 +491,36 @@ def full_scan():
     except Exception as e:
         print(f"\033[91m[ERROR] Full scan failed: {e}\033[0m")
         return jsonify({"error": "Full scan failed"}), 500
+
+@app.route('/misc/history-sizes', methods=['GET'])
+def get_history_sizes():
+    try:
+        scan_size = os.path.getsize(SCAN_HISTORY_FILE) if os.path.exists(SCAN_HISTORY_FILE) else 0
+        bypass_size = os.path.getsize(BYPASS_HISTORY_FILE) if os.path.exists(BYPASS_HISTORY_FILE) else 0
+        total_size = scan_size + bypass_size
+
+        return jsonify({
+            "scan": scan_size,
+            "bypass": bypass_size,
+            "all": total_size
+        })
+    except Exception as e:
+        return jsonify({"error": f"Failed to calculate history sizes: {str(e)}"}), 500
+
+import logging
+
+def update_logging_level(debug_mode):
+    if debug_mode == "off":
+        logging.getLogger('werkzeug').setLevel(logging.ERROR)
+        app.logger.setLevel(logging.ERROR) 
+    elif debug_mode == "basic":
+        logging.getLogger('werkzeug').setLevel(logging.INFO) 
+        app.logger.setLevel(logging.INFO)  
+    elif debug_mode == "full":
+        logging.getLogger('werkzeug').setLevel(logging.DEBUG) 
+        app.logger.setLevel(logging.DEBUG)  
+
+update_logging_level(settings.get("debug_mode", "off"))
 
 @app.route('/settings', methods=['GET', 'POST'])
 def manage_settings():
@@ -431,7 +535,24 @@ def manage_settings():
             if settings.get(key) != value:
                 print(f"\033[94m[INFO] Setting changed: {key}={value}\033[0m")
         settings = updated_settings
+
+        # Update logging level dynamically if debug mode changes
+        update_logging_level(updated_settings.get("debug_mode", "off"))
+
         return jsonify({"message": "Settings updated successfully"})
+
+@app.route('/exit', methods=['POST'])
+def exit_server():
+    def shutdown():
+        func = request.environ.get('werkzeug.server.shutdown')
+        if func is None:
+            raise RuntimeError('Not running with the Werkzeug Server')
+        func()
+
+    print("\033[93m[INFO] Exit button clicked. Shutting down the server...\033[0m")
+    graceful_shutdown(signal.SIGINT, None) 
+    shutdown()
+    return jsonify({"message": "Server shutting down gracefully."})
 
 @app.route('/')
 def index():
@@ -455,6 +576,39 @@ def permission_giver():
     except Exception as e:
         input(f"Problem with giving permissions: {e}")
 
+@app.route('/server/start', methods=['GET'])
+def server_start():
+    print("\033[92m[INFO] Server has started. Clearing client-side disabled devices.\033[0m")
+    return jsonify({"message": "Server started. Clear disabled devices."})
+
+def graceful_shutdown(signal_received, frame):
+    print("\033[93m[INFO] Graceful shutdown initiated...\033[0m")
+    global DISABLED_DEVICES
+
+    # Re-enable all disabled devices
+    for device in DISABLED_DEVICES:
+        try:
+            mac = device['mac']
+            print(f"\033[94m[INFO] Re-enabling device with MAC: {mac}\033[0m")
+            network_controller.restore_device(mac)
+        except Exception as e:
+            print(f"\033[91m[ERROR] Failed to re-enable device {mac}: {e}\033[0m")
+
+    # Save the disabled devices list to the file
+    save_disabled_devices()
+    print("\033[92m[INFO] Disabled devices list saved on shutdown.\033[0m")
+
+    # Clear the disabled devices list
+    DISABLED_DEVICES = []
+    print("\033[92m[INFO] All disabled devices have been re-enabled.\033[0m")
+
+    # Exit the application
+    print("\033[92m[INFO] Server shutting down gracefully.\033[0m")
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, graceful_shutdown)
+signal.signal(signal.SIGTERM, graceful_shutdown)
+
 if __name__ == '__main__':
     if settings.get("run_as_admin", False) and not has_perms():
         print("\033[93m[INFO] Restarting with administrative privileges...\033[0m")
@@ -462,7 +616,6 @@ if __name__ == '__main__':
 
     os.system('cls')
 
-    # Configure Flask logging based on debug_mode
     if settings.get("debug_mode", "off") == "basic":
         logging.getLogger('werkzeug').setLevel(logging.INFO)  
     elif settings.get("debug_mode", "off") == "full":
@@ -476,7 +629,6 @@ if __name__ == '__main__':
 
     print(f"\033[92m[INFO] Server running at http://{CREATOR_IP}:5000\033[0m")
 
-    # Use subprocess to open the browser
     if settings["auto_open_page"]:
         try:
             subprocess.Popen(['start', 'http://localhost:5000'], shell=True)
