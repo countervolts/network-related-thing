@@ -71,14 +71,27 @@ async function deleteScan(id) {
     try {
         const response = await fetch(`/history/scans/${id}`, { method: 'DELETE' });
         if (response.ok) {
-            showNotification('Scan history deleted successfully.', 'success');  
+            // Refresh the history view
             document.getElementById('historyTab').click();
+            
+            // Update history sizes
+            if (window.updateHistorySizes) {
+                window.updateHistorySizes();
+            }
+            
+            if (window.showNotification) {
+                window.showNotification('Scan history deleted successfully.', 'success');
+            }
         } else {
-            showNotification('Failed to delete scan history.', 'error');  
+            if (window.showNotification) {
+                window.showNotification('Failed to delete scan history.', 'error');
+            }
         }
     } catch (error) {
         console.error('Failed to delete scan history:', error);
-        showNotification('An error occurred while deleting scan history.', 'error'); 
+        if (window.showNotification) {
+            window.showNotification('An error occurred while deleting scan history.', 'error');
+        }
     }
 }
 

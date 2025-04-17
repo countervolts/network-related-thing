@@ -4,4 +4,3 @@ dist/
 .vscode/
 *.spec
 changelog.md
-tester.py

@@ -5,6 +5,7 @@
 - **disable devices**: block devices on your network by their ip and mac addresses, with built in anti-anti-disable features
 - **network scanner**: scan your network to see all active devices, their ip, mac, hostname, and vendor
 - **mac address bypass**: change your mac address using registry or cmd methods without needing to restart
+- **network visualizer**: shows the users network in the in a graph/list view
 
 ### other features
 
@@ -31,23 +32,10 @@ python server.py
 
 ### building source
 
-```sh
-python -m pip install -r requirements.txt
-python -m pip install pyinstaller
-```
+1. download the code [here](https://github.com/countervolts/network-related-thing/archive/refs/heads/main.zip) 
 
-3. locate the folder using `cd` in the command prompt
+2. open and extract the folder to your desktop
 
-4. run the following command to build the executable:
+3. run `build.cmd` and wait for it to finish (make sure you have atleast python installed) 
 
-```sh
-pyinstaller server.py --onefile --name=server --icon=favicon.ico --clean --noconfirm ^
---add-data "index.html;." --add-data "favicon.ico;." ^
---add-data "src\bypass;src\bypass" --add-data "src\history;src\history" ^
---add-data "src\misc;src\misc" --add-data "src\scanner;src\scanner" ^
---add-data "src\settings;src\settings"
-```
-
-press enter, wait for it to compile.
-
-5. go into `dist` and run the executable
+4. wait for it to finish installing the needed things aswell compiling the source

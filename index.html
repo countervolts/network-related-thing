@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="src/misc/styles.css">
     <link rel="stylesheet" href="src/bypass/styles.css">
     <link rel="stylesheet" href="src/history/styles.css">
+    <link rel="stylesheet" href="src/visualizer/styles.css">
 </head>
 <body>
     <div class="nav-container">
@@ -17,6 +18,7 @@
                 <a href="#scanner" id="scannerTab">Scanner</a>
                 <a href="#bypass" id="bypassTab">Bypass</a>
                 <a href="#history" id="historyTab">History</a>
+                <a href="#visualizer" id="visualizerTab">Visualizer <span style="font-size: 0.7em; color: #999; font-weight: normal;">(new!)</span></a>
                 <a href="#misc" id="miscTab">Misc</a>
                 <a href="#settings" id="settingsTab">Settings</a>
             </ul>
@@ -24,6 +26,7 @@
     </div>
 
     <div class="container">
+        
         <div id="scannerView" class="view" style="display: block;">
             <div class="controls">
                 <h1 id="scanner" style="color: white;">Network Scanner</h1>
@@ -52,6 +55,7 @@
             </div>
         </div>
 
+        
         <div id="bypassView" class="view" style="display: none;">
             <h1 id="bypass">MAC Address Bypass</h1>
             <div class="bypass-section">
@@ -61,6 +65,7 @@
             </div>
         </div>
 
+        
         <div id="historyView" class="view" style="display: none;">
             <h1>History</h1>
             <div class="history-container">
@@ -75,6 +80,21 @@
             </div>
         </div>
 
+        
+        <div id="visualizerView" class="view" style="display: none;">
+            <h1>Network Visualizer</h1>
+            <div class="visualizer-container">
+                <div id="networkGraph" class="network-graph"></div>
+                <div id="deviceDetails" class="device-details">
+                    <h3>Device Details</h3>
+                    <div id="deviceDetailsContent">
+                        <p class="details-prompt">Click on a device to view details</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        
         <div id="settingsView" class="view" style="display: none;">
             <h1>Settings</h1>
             <div id="settingsContent">
@@ -96,13 +116,16 @@
                 <div class="setting-item">
                     <label for="runAsAdminToggle" class="setting-label">
                         <span>Run as Admin</span>
-                        <p class="setting-description">If enabled, the application will run with administrative privileges. (Restart required)</p>
+                        <p class="setting-description">If enabled, the application will restart with administrative privileges.</p>
                     </label>
                     <input type="checkbox" id="runAsAdminToggle" class="toggle">
                 </div>
                 <div class="setting-item">
                     <label for="bypassModeDropdown" class="setting-label">
-                        <span>Bypass Mode</span>
+                        <div class="setting-header">
+                            <span>Bypass Mode</span>
+                            <div class="inline-info-icon" id="bypassModeInfo">?</div>
+                        </div>
                         <p class="setting-description">Select the method to use for bypassing (commands or Registry).</p>
                     </label>
                     <select id="bypassModeDropdown" class="dropdown">
@@ -130,44 +153,68 @@
             </div>
         </div>
 
+        
         <div id="miscView" class="view" style="display: none;">
             <h1>Miscellaneous</h1>
             <div id="miscContent">
-                <div class="setting-item">
-                    <label class="setting-label">
-                        <span>Clear Console</span>
-                        <p class="setting-description">Clears the console.</p>
-                    </label>
-                    <button id="clearConsoleBtn" class="apply-btn">Clear Console</button>
-                </div>
-                <div class="setting-item">
-                    <label class="setting-label">
-                        <span>Clear Local Storage</span>
-                        <p class="setting-description">Clears all data stored in the browser's local storage. (Whatever is shown in scanner currently will be removed)</p>
-                    </label>
-                    <button id="clearLocalStorageBtn" class="apply-btn">Clear Local Storage</button>
-                </div>
-                <div class="setting-item">
-                    <label class="setting-label">
-                        <span>Clear History</span>
-                        <p class="setting-description">Select the type of history to clear. (All history can be viewed if you click "Open Storage Folder")</p>
-                    </label>
-                    <select id="clearHistoryDropdown" class="dropdown1">
-                        <option value="scan">Scan History</option>
-                        <option value="bypass">Bypass History</option>
-                        <option value="all">All History</option>
-                    </select>
-                    <div class="button-group">
-                        <button id="clearHistoryBtn" class="apply-btn half-width">Clear Selected History</button>
-                        <button id="openHistoryFolderBtn" class="apply-btn half-width">Open Storage Folder</button>
+                <div class="misc-section">
+                    <h3 class="section-title">System Maintenance</h3>
+                    <div class="misc-grid">
+                        <div class="setting-item compact">
+                            <label class="setting-label">
+                                <span>Clear Console</span>
+                                <p class="setting-description">Clears the console output to improve readability.</p>
+                            </label>
+                            <button id="clearConsoleBtn" class="apply-btn">Clear Console</button>
+                        </div>
+                        
+                        <div class="setting-item compact">
+                            <label class="setting-label">
+                                <span>Network Adapters</span>
+                                <p class="setting-description">Restart network adapters to resolve connection issues.</p>
+                            </label>
+                            <button id="restartAdaptersBtn" class="apply-btn">Restart Network Adapters</button>
+                        </div>
                     </div>
                 </div>
-                <div class="setting-item">
-                    <label class="setting-label">
-                        <span>Download OUI File</span>
-                        <p class="setting-description">Downloads the "latest" OUI file for vendor lookups.</p>
-                    </label>
-                    <button id="downloadOuiBtn" class="apply-btn">Download OUI File (6 MB)</button>
+                <div class="misc-section">
+                    <h3 class="section-title">Data Management</h3>
+                    <div class="setting-item">
+                        <label class="setting-label">
+                            <span>Clear Local Storage</span>
+                            <p class="setting-description">Clears all data stored in the browser's local storage. (Whatever is shown in scanner/visualizer currently will be removed)</p>
+                        </label>
+                        <button id="clearLocalStorageBtn" class="apply-btn">Clear Local Storage</button>
+                    </div>
+                    <div class="setting-item">
+                        <label class="setting-label">
+                            <span>Clear History</span>
+                            <p class="setting-description">Select the type of history to clear. (All history can be viewed if you click "Open Storage Folder")</p>
+                        </label>
+                        <div class="control-row">
+                            <select id="clearHistoryDropdown" class="dropdown1">
+                                <option value="scan">Scan History</option>
+                                <option value="bypass">Bypass History</option>
+                                <option value="all">All History</option>
+                            </select>
+                            <div class="button-group">
+                                <button id="clearHistoryBtn" class="apply-btn">Clear Selected History</button>
+                                <button id="openHistoryFolderBtn" class="apply-btn">Open Storage Folder</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resources Section -->
+                <div class="misc-section">
+                    <h3 class="section-title">Resources</h3>
+                    <div class="setting-item">
+                        <label class="setting-label">
+                            <span>Download OUI File</span>
+                            <p class="setting-description">Downloads the "latest" OUI file for vendor lookups. Required for identifying device manufacturers in full scans.</p>
+                        </label>
+                        <button id="downloadOuiBtn" class="apply-btn">Download OUI File (6 MB)</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -185,7 +232,7 @@
         </div>
 
         <div id="notificationContainer" class="notification-container"></div>
-        <div class="version">v1.1</div>
+        <div class="version">v1.2</div>
     </div>
 
     <script src="src/scanner/app.js"></script>
@@ -193,39 +240,40 @@
     <script src="src/misc/misc.js"></script>
     <script src="src/bypass/yep.js"></script>
     <script src="src/history/tracker.js"></script>
+    <script src="src/visualizer/visualizer.js"></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             function showViewFromHash() {
-                const hash = window.location.hash || '#scanner';
-                const views = {
-                    '#scanner': 'scannerView',
-                    '#bypass': 'bypassView',
-                    '#history': 'historyView',
-                    '#settings': 'settingsView',
-                    '#misc': 'miscView'
-                };
-        
+                    const hash = window.location.hash || '#scanner';
+                    const views = {
+                        '#scanner': 'scannerView',
+                        '#bypass': 'bypassView',
+                        '#history': 'historyView',
+                        '#visualizer': 'visualizerView',
+                        '#settings': 'settingsView',
+                        '#misc': 'miscView'
+                    };
+
                 Object.values(views).forEach(viewId => {
                     document.getElementById(viewId).style.display = 'none';
                 });
-        
                 const viewId = views[hash];
                 if (viewId) {
                     document.getElementById(viewId).style.display = 'block';
                 }
-        
-                document.querySelectorAll('.nav-menu a').forEach(link => {
-                    if (link.getAttribute('href') === hash) {
-                        link.classList.add('active');
-                    } else {
-                        link.classList.remove('active');
-                    }
-                });
+
+                const scannerView = document.getElementById('scannerView');
+                const resultsBody = document.getElementById('resultsBody');
+
+                if (!scannerView || !resultsBody) {
+                    console.error('Initialization error: scannerView or resultsBody is missing from the DOM.');
+                } else {
+                    console.log('scannerView and resultsBody are properly initialized.');
+                }
             }
-        
+
             window.addEventListener('hashchange', showViewFromHash);
-        
             showViewFromHash();
         });
     </script>

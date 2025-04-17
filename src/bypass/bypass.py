@@ -12,7 +12,15 @@ IGNORE_LIST = [
     "VirtualBox Host-Only Ethernet Adapter",
     "VMware Virtual Ethernet Adapter",
     "Microsoft Wi-Fi Direct Virtual Adapter",
-    "Microsoft Hosted Network Virtual Adapter"
+    "Microsoft Hosted Network Virtual Adapter",
+    "Cisco AnyConnect Virtual Adapter",
+    "NordVPN Network Adapter",
+    "ExpressVPN Tunnel Adapter",
+    "WSL Virtual Ethernet Adapter",
+    "Remote NDIS based Internet Sharing Device",
+    "Bluetooth Device (Personal Area Network)",
+    "Microsoft Wi-Fi Direct Virtual Adapter #2",
+    "Parallels Virtual Ethernet Adapter"
 ]
 
 def transport_names():

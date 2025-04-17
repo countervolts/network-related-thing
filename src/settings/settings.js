@@ -48,10 +48,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function applyDebugMode(debugMode) {
         if (debugMode === 'off') {
-            // Override console methods to suppress output
             console.log = console.warn = console.error = console.info = console.debug = () => {};
         } else if (debugMode === 'basic') {
-            // Restore only essential console methods
             console.log = originalConsole.log;
             console.warn = originalConsole.warn;
             console.error = originalConsole.error;
@@ -113,6 +111,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Apply debug mode settings dynamically
                 applyDebugMode(updatedSettings.debug_mode);
+                
+                // Refresh bypass view if it's currently visible and bypass mode changed
+                if (document.getElementById('bypassView').style.display === 'block' && 
+                    currentSettings.bypass_mode !== updatedSettings.bypass_mode) {
+                    document.getElementById('bypassTab').click();
+                }
             } else {
                 showNotification('Failed to apply settings.', 'error');  
             }
@@ -130,4 +134,30 @@ document.addEventListener('DOMContentLoaded', () => {
     cancelBtn.addEventListener('click', hideConfirmationModal);
     applySettingsBtn.addEventListener('click', showConfirmationModal);
     loadSettings();
+
+    // Add tooltip for bypass mode info
+    const bypassModeInfo = document.getElementById('bypassModeInfo');
+    if (bypassModeInfo) {
+        const tooltip = document.createElement('div');
+        tooltip.className = 'tooltip';
+        tooltip.innerHTML = `
+            <h3>Bypass Mode Options</h3>
+            
+            <div class="tooltip-item">
+                <h4>Registry Method</h4>
+                <p>Modifies the Windows registry to change the MAC address. Doesn't require system restart in some cases.</p>
+            </div>
+            
+            <div class="tooltip-item">
+                <h4>CMD Method</h4>
+                <p>Uses command line (netsh) to change the MAC address. Requires system restart.</p>
+            </div>
+            
+            <div class="tooltip-warning">
+                Note: Both methods will send a notification and require admin.
+            </div>
+        `;
+        
+        bypassModeInfo.appendChild(tooltip);
+    }
 });

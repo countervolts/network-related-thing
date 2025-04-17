@@ -1,24 +1,22 @@
 #settingsView {
     padding: 20px;
-    background-color: #181818; /* Darker background for minimalistic theme */
+    background-color: #181818; 
     border-radius: 12px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-    color: #d0d0d0; /* Softer text color */
+    color: #d0d0d0; 
     font-size: 1em;
 }
-
 #settingsView h1 {
     font-size: 2em;
     margin-bottom: 20px;
-    color: #ffffff; /* Bright text for headings */
+    color: #ffffff; 
     text-align: center;
     text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
 }
-
 .setting-item {
     margin-bottom: 15px;
     padding: 15px;
-    background-color: #202020; /* Slightly lighter than the background */
+    background-color: #202020; 
     border-radius: 10px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
     display: flex;
@@ -26,42 +24,36 @@
     justify-content: space-between;
     transition: transform 0.2s, box-shadow 0.2s;
 }
-
 .setting-item:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
-
 .setting-label {
     font-size: 1.1em;
-    color: #d0d0d0; /* Softer text color */
+    color: #d0d0d0; 
     display: flex;
     flex-direction: column;
     gap: 5px;
 }
-
 .setting-description {
     font-size: 0.9em;
-    color: #a0a0a0; /* Muted text for descriptions */
+    color: #a0a0a0; 
     margin-top: 5px;
 }
-
 .toggle {
     width: 50px;
     height: 25px;
     appearance: none;
-    background-color: #333; /* Dark toggle background */
+    background-color: #333; 
     border-radius: 15px;
     position: relative;
     outline: none;
     cursor: pointer;
     transition: background-color 0.3s;
 }
-
 .toggle:checked {
-    background-color: #4caf50; /* Green for active state */
+    background-color: #4caf50; 
 }
-
 .toggle::before {
     content: '';
     position: absolute;
@@ -73,13 +65,11 @@
     border-radius: 50%;
     transition: transform 0.3s;
 }
-
 .toggle:checked::before {
     transform: translateX(25px);
 }
-
 .apply-btn {
-    background-color: #333; /* Dark button background */
+    background-color: #333; 
     color: #fff;
     padding: 12px 25px;
     border: none;
@@ -93,31 +83,27 @@
     width: 100%;
     text-align: center;
 }
-
 .apply-btn:hover {
-    background-color: #444; /* Slightly lighter on hover */
+    background-color: #444; 
     transform: translateY(-2px);
 }
-
 .apply-btn:active {
     transform: translateY(0);
 }
-
 .modal {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.8); /* Darker overlay */
+    background-color: rgba(0, 0, 0, 0.8); 
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 1000;
 }
-
 .modal-content {
-    background-color: #202020; /* Match the setting item background */
+    background-color: #202020; 
     padding: 20px;
     border-radius: 12px;
     box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
@@ -125,25 +111,21 @@
     color: #d0d0d0;
     width: 400px;
 }
-
 .modal-content h2 {
     font-size: 1.8em;
     margin-bottom: 10px;
-    color: #ffffff; /* Bright text for headings */
+    color: #ffffff; 
 }
-
 .modal-content p {
     font-size: 1.1em;
     margin-bottom: 20px;
-    color: #a0a0a0; /* Muted text for descriptions */
+    color: #a0a0a0; 
 }
-
 .modal-actions {
     display: flex;
     justify-content: space-around;
     gap: 10px;
 }
-
 .modal-btn {
     padding: 10px 20px;
     border: none;
@@ -153,38 +135,31 @@
     font-weight: bold;
     transition: background-color 0.3s, transform 0.2s;
 }
-
 .modal-btn.confirm {
     background-color: #4caf50;
     color: #fff;
 }
-
 .modal-btn.confirm:hover {
     background-color: #45a049;
 }
-
 .modal-btn.cancel {
     background-color: #f44336; 
     color: #fff;
 }
-
 .modal-btn.cancel:hover {
     background-color: #e53935; 
 }
-
 .settings-separator {
     border: none;
     border-top: 1px solid #444;
     margin: 20px 0;
 }
-
 .developer-settings-header {
     font-size: 1.5em;
     margin-bottom: 15px;
     color: #ffffff;
     text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
 }
-
 .dropdown {
     padding: 10px;
     font-size: 1em;
@@ -195,7 +170,75 @@
     cursor: pointer;
     transition: background-color 0.3s;
 }
-
 .dropdown:hover {
     background-color: #444;
+}
+
+.inline-info-icon {
+    display: inline-flex;
+    width: 18px;
+    height: 18px;
+    background-color: #007bff;
+    color: white;
+    border-radius: 50%;
+    align-items: center;
+    justify-content: center;
+    cursor: help;
+    font-weight: bold;
+    font-size: 12px;
+    margin-left: 8px;
+    position: relative;
+}
+
+.inline-info-icon:hover {
+    background-color: #0056b3;
+}
+
+.inline-info-icon:hover::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 100%;
+    width: 10px;
+    height: 100%;
+}
+
+.inline-info-icon .tooltip {
+    position: absolute;
+    top: -10px;
+    left: calc(100% + 10px);
+    width: 300px;
+    background-color: #333;
+    color: #e0e0e0;
+    border: 1px solid #444;
+    border-radius: 5px;
+    padding: 15px;
+    font-size: 14px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    z-index: 100;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s, visibility 0.3s;
+}
+
+.inline-info-icon:hover .tooltip {
+    opacity: 1;
+    visibility: visible;
+}
+
+.setting-header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+
+.tooltip-warning {
+    margin-top: 12px;
+    padding: 8px 10px;
+    background-color: rgba(255, 215, 0, 0.15);
+    border-left: 3px solid #ffcc00;
+    border-radius: 3px;
+    color: #e6e6e6;
+    font-size: 13px;
 }

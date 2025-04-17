@@ -10,8 +10,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const clearHistoryBtn = document.getElementById('clearHistoryBtn');
     const openHistoryFolderBtn = document.getElementById('openHistoryFolderBtn');
     const notificationContainer = document.getElementById('notificationContainer');
+    const restartAdaptersBtn = document.getElementById('restartAdaptersBtn');
 
-    function showNotification(message, type = 'success') {
+    // Make showNotification available globally
+    window.showNotification = function(message, type = 'success') {
         const notification = document.createElement('div');
         notification.className = `notification ${type}`;
         notification.textContent = message;
@@ -19,12 +21,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         setTimeout(() => notification.classList.add('show'), 100);
         setTimeout(() => notification.remove(), 3000);
-    }
+    };
 
     miscTab.addEventListener('click', () => {
         scannerView.style.display = 'none';
         settingsView.style.display = 'none';
         miscView.style.display = 'block';
+        
+        // Update history sizes when tab is clicked
+        updateHistorySizes();
     });
 
     clearConsoleBtn.addEventListener('click', async () => {
@@ -108,7 +113,9 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const data = await response.json();
             if (response.ok) {
-                showNotification(data.message, 'success');  
+                showNotification(data.message, 'success');
+                // Update history sizes after clearing
+                updateHistorySizes();
             } else {
                 showNotification(data.error || 'Failed to clear history.', 'error');  
             }
@@ -132,7 +139,29 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    async function updateHistorySizes() {
+    restartAdaptersBtn.addEventListener('click', async () => {
+        try {
+            showNotification('Restarting network adapters...', 'info');
+            
+            const response = await fetch('/network/restart-adapters', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            
+            const data = await response.json();
+            if (response.ok) {
+                showNotification(data.message || 'Network adapters restarted successfully.', 'success');
+            } else {
+                showNotification(data.error || 'Failed to restart network adapters.', 'error');
+            }
+        } catch (error) {
+            console.error('Error restarting network adapters:', error);
+            showNotification('An error occurred while restarting network adapters.', 'error');
+        }
+    });
+
+    // Make updateHistorySizes available globally
+    window.updateHistorySizes = async function() {
         try {
             const response = await fetch('/misc/history-sizes');
             const sizes = await response.json();
@@ -146,18 +175,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
 
                 // Update dropdown options with sizes
-                clearHistoryDropdown.innerHTML = `
-                    <option value="scan">Scan History (${formatSize(sizes.scan)})</option>
-                    <option value="bypass">Bypass History (${formatSize(sizes.bypass)})</option>
-                    <option value="all">All History (${formatSize(sizes.all)})</option>
-                `;
+                if (clearHistoryDropdown) {
+                    clearHistoryDropdown.innerHTML = `
+                        <option value="scan">Scan History (${formatSize(sizes.scan)})</option>
+                        <option value="bypass">Bypass History (${formatSize(sizes.bypass)})</option>
+                        <option value="all">All History (${formatSize(sizes.all)})</option>
+                    `;
+                }
+                
+                return sizes; // Return sizes for potential use elsewhere
             } else {
                 console.error('Failed to fetch history sizes:', sizes.error);
+                return null;
             }
         } catch (error) {
             console.error('Error fetching history sizes:', error);
+            return null;
         }
-    }
+    };
 
+    // Initial update
     updateHistorySizes();
+    
+    // Set up event listeners for history updates
+    document.addEventListener('historyUpdated', function() {
+        updateHistorySizes();
+    });
+    
+    // Set a periodic update interval (every 30 seconds) as a fallback
+    setInterval(updateHistorySizes, 30000);
 });

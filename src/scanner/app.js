@@ -12,6 +12,102 @@ function showNotification(message, type = 'success') {
 
 let disabledDevicesBox;
 
+let pingStreams = {};
+
+function requestPing(ip) {
+    if (pingStreams[ip]) {
+        return;
+    }
+    
+    const clientId = 'scanner-' + Math.random().toString(36).substring(2, 15);
+    const eventSource = new EventSource(`/api/ping/stream?ip=${ip}&client=${clientId}`);
+    
+    pingStreams[ip] = {
+        eventSource: eventSource,
+        clientId: clientId
+    };
+
+    const deviceElement = document.querySelector(`.device-item[data-ip="${ip}"]`);
+    if (deviceElement) {
+        const pingTimeElement = deviceElement.querySelector('.ping-time');
+        if (pingTimeElement) {
+            pingTimeElement.textContent = 'Pinging...';
+        }
+    }
+    
+    eventSource.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+
+            if (data.processing === true) {
+                return;
+            }
+            
+            const deviceElement = document.querySelector(`.device-item[data-ip="${ip}"]`);
+            if (deviceElement) {
+                const signalIndicator = deviceElement.querySelector('.signal-indicator');
+                if (signalIndicator && data.signal !== undefined) {
+                    signalIndicator.style.width = `${data.signal}%`;
+                    signalIndicator.title = `Ping: ${data.time}ms, Signal: ${data.signal}%`;
+                }
+                
+                const pingTimeElement = deviceElement.querySelector('.ping-time');
+                if (pingTimeElement) {
+                    if (data.success) {
+                        pingTimeElement.textContent = `${data.time}ms`;
+                    } else {
+                        pingTimeElement.textContent = 'Failed';
+                    }
+                }
+            } else {
+                stopPingStream(ip);
+            }
+        } catch (error) {
+            console.error('Error processing ping update:', error);
+        }
+    };
+    
+    eventSource.onerror = (error) => {
+        console.error('Ping stream connection error for IP:', ip, error);
+        stopPingStream(ip);
+    };
+}
+
+function stopPingStream(ip) {
+    if (pingStreams[ip]) {
+        pingStreams[ip].eventSource.close();
+        fetch('/api/ping/stop', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ client: pingStreams[ip].clientId })
+        }).catch(error => {
+            console.error('Error stopping ping stream:', error);
+        });
+        
+        delete pingStreams[ip];
+    }
+}
+
+function stopAllPingStreams() {
+    Object.keys(pingStreams).forEach(ip => {
+        stopPingStream(ip);
+    });
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+        stopAllPingStreams();
+    }
+});
+
+document.querySelectorAll('.tab').forEach(tab => {
+    if (tab.id !== 'scannerTab') {
+        tab.addEventListener('click', () => {
+            stopAllPingStreams();
+        });
+    }
+});
+
 document.addEventListener('DOMContentLoaded', () => {
     const basicBtn = document.getElementById('basicScanBtn');
     const fullBtn = document.getElementById('fullScanBtn');
@@ -180,6 +276,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
             saveLastScanDetails(scanType, results);
             showNotification(`${scanType} completed successfully. Found ${results.length} devices.`, 'success');
+            document.dispatchEvent(new CustomEvent('scanCompleted', { 
+                detail: { 
+                    results: results,
+                    scanType: scanType
+                } 
+            }));
+            if (window.updateHistorySizes) {
+                window.updateHistorySizes();
+            }
+            document.dispatchEvent(new Event('historyUpdated'));
         } catch (error) {
             console.error(`${scanType} failed:`, error);
             showNotification(`${scanType} failed: ${error.message}`, 'error');
@@ -394,6 +500,10 @@ document.addEventListener('DOMContentLoaded', () => {
             
             showBypassStatus(`${data.message}: ${data.new_mac} - ${data.note}`, 'success');
             showNotification('MAC address changed successfully!', 'info');
+            if (window.updateHistorySizes) {
+                window.updateHistorySizes();
+            }
+            document.dispatchEvent(new Event('historyUpdated'));
         } catch (error) {
             showBypassStatus(`Error: ${error.message}`, 'error');
         }
@@ -469,7 +579,6 @@ async function checkServerStart() {
     }
 }
 
-// Call this function on page load
 document.addEventListener('DOMContentLoaded', () => {
     checkServerStart();
 });

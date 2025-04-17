@@ -1,12 +1,15 @@
 from src.bypass.bypass import transport_names, neftcfg_search, init_bypass, IGNORE_LIST, restart_all_adapters
-from flask import Flask, jsonify, send_from_directory, redirect, request, render_template
+from flask import Flask, jsonify, send_from_directory, redirect, request, Response, stream_with_context
 from src.ping import scan_network, get_default_gateway
-from src.netman import GarpSpoofer
+from src.netman import GarpSpoofer, ping_manager
 from getmac import get_mac_address
+from functools import lru_cache
 from flask_cors import CORS
-import webbrowser
+from threading import Lock
 import subprocess
+import threading
 import requests
+import platform
 import logging
 import socket
 import ctypes
@@ -18,7 +21,6 @@ import uuid
 import sys
 import re
 import os
-import signal  # Add this import for handling termination signals
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -48,13 +50,15 @@ DISABLED_DEVICES = []
 DISABLED_DEVICES_FILE = os.path.join(APPDATA_LOCATION, "disabled_devices.json")
 disabled_devices_cleared = False
 
+PING_CACHE = {}
+PING_CACHE_TIMEOUT = 2
+ping_lock = Lock()
+
 def save_disabled_devices():
-    """Save the disabled devices list to a file."""
     with open(DISABLED_DEVICES_FILE, "w") as f:
         json.dump(DISABLED_DEVICES, f, indent=4)
 
 def load_disabled_devices():
-    """Load the disabled devices list from a file."""
     if os.path.exists(DISABLED_DEVICES_FILE):
         with open(DISABLED_DEVICES_FILE, "r") as f:
             return json.load(f)
@@ -249,6 +253,101 @@ def log_bypass_history(previous_mac, new_mac, method, transport):
     })
     save_history(BYPASS_HISTORY_FILE, history)
 
+@lru_cache(maxsize=128)
+def parse_ping_output(output, start_time, end_time):
+    try:
+        if platform.system().lower() == 'windows':
+            match = re.search(r'Average = (\d+)ms', output)
+            if not match:
+                match = re.search(r'time[=<](\d+)ms', output)
+            ping_time = int(match.group(1)) if match else int((end_time - start_time) * 1000)
+        else:
+            match = re.search(r'time=(\d+\.\d+) ms', output)
+            ping_time = float(match.group(1)) if match else int((end_time - start_time) * 1000)
+        return ping_time
+    except:
+        return int((end_time - start_time) * 1000)
+
+@app.route('/api/ping', methods=['GET'])
+def ping_device():
+    ip = request.args.get('ip')
+    if not ip:
+        return jsonify({'error': 'No IP address provided'}), 400
+    
+    ping_manager.request_ping(ip)
+    
+    ping_data = ping_manager.get_ping_data(ip)
+    
+    if ping_data:
+        return jsonify(ping_data)
+    else:
+        return jsonify({
+            'ip': ip,
+            'success': True,
+            'time': 50, 
+            'signal': 75,
+            'processing': True
+        })
+
+@app.route('/api/ping/batch', methods=['POST'])
+def batch_ping_devices():
+    data = request.json
+    if not data or 'ips' not in data:
+        return jsonify({'error': 'No IP addresses provided'}), 400
+    
+    ips = data['ips']
+    
+    results = ping_manager.get_ping_batch(ips)
+    for ip in ips:
+        if ip not in results:
+            results[ip] = {
+                'ip': ip,
+                'success': True,
+                'time': 50,  # Default value
+                'signal': 75,
+                'processing': True
+            }
+    
+    return jsonify(results)
+
+def clear_expired_ping_cache():
+    with ping_lock:
+        current_time = time.time()
+        expired_keys = [ip for ip, data in PING_CACHE.items() 
+                       if current_time - data['timestamp'] > PING_CACHE_TIMEOUT * 2]
+        for ip in expired_keys:
+            del PING_CACHE[ip]
+
+_cleanup_started = False
+
+@app.before_request
+def start_cleanup_task():
+    global _cleanup_started
+    if not _cleanup_started:
+        _cleanup_started = True
+        from threading import Thread
+        import time
+        
+        def cleanup_task():
+            while True:
+                time.sleep(PING_CACHE_TIMEOUT * 2)
+                clear_expired_ping_cache()
+                cleanup_abandoned_ping_connections()
+        
+        thread = Thread(target=cleanup_task)
+        thread.daemon = True
+        thread.start()
+
+@app.route('/network/restart-adapters', methods=['POST'])
+def restart_network_adapters():
+    try:
+        if restart_all_adapters():
+            return jsonify({"message": "Network adapters restarted successfully."})
+        else:
+            return jsonify({"error": "Failed to restart network adapters."}), 500
+    except Exception as e:
+        return jsonify({"error": f"Failed to restart network adapters: {str(e)}"}), 500
+
 @app.route('/bypass/revert-mac', methods=['POST'])
 def revert_mac():
     try:
@@ -420,7 +519,12 @@ def basic_scan():
             print(f"\033[94m[DEBUG] Performing basic scan on subnet: {subnet}\033[0m")
         
         results = scan_network(subnet=subnet, scan_hostname=False, scan_vendor=False) or []
-
+        local_ip = get_local_ip()
+        local_mac = get_mac_address()
+        for result in results:
+            if result["ip"] == local_ip:
+                result["mac"] = local_mac
+                break
 
         if settings.get("debug_mode") == "full":
             print("\033[94m-[DEBUG] Start of request headers-\033[0m")
@@ -470,6 +574,12 @@ def full_scan():
                 device["vendor"] = "No oui.txt"
         else:
             results = scan_network(subnet=subnet, scan_hostname=True, scan_vendor=True)
+        local_ip = get_local_ip()
+        local_mac = get_mac_address()  
+        for result in results:
+            if result["ip"] == local_ip:
+                result["mac"] = local_mac
+                break
 
         if settings.get("debug_mode") == "full":
             print("\033[94m-[DEBUG] Start of request headers-\033[0m")
@@ -509,6 +619,18 @@ def get_history_sizes():
 
 import logging
 
+class EndpointFilter(logging.Filter):
+    def __init__(self, excluded_paths):
+        self.excluded_paths = excluded_paths
+        super(EndpointFilter, self).__init__()
+
+    def filter(self, record):
+        message = record.getMessage()
+        for path in self.excluded_paths:
+            if f"GET {path}" in message or f"POST {path}" in message:
+                return False
+        return True
+
 def update_logging_level(debug_mode):
     if debug_mode == "off":
         logging.getLogger('werkzeug').setLevel(logging.ERROR)
@@ -519,6 +641,10 @@ def update_logging_level(debug_mode):
     elif debug_mode == "full":
         logging.getLogger('werkzeug').setLevel(logging.DEBUG) 
         app.logger.setLevel(logging.DEBUG)  
+    
+    # Always filter ping endpoints regardless of log level
+    log_filter = EndpointFilter(['/api/ping', '/api/ping/batch'])
+    logging.getLogger('werkzeug').addFilter(log_filter)
 
 update_logging_level(settings.get("debug_mode", "off"))
 
@@ -608,6 +734,81 @@ def graceful_shutdown(signal_received, frame):
 
 signal.signal(signal.SIGINT, graceful_shutdown)
 signal.signal(signal.SIGTERM, graceful_shutdown)
+
+# Global dict to track active SSE connections by client ID
+active_ping_connections = {}
+active_ping_lock = threading.Lock()
+
+@app.route('/api/ping/stream', methods=['GET'])
+def stream_ping():
+    ip = request.args.get('ip')
+    client_id = request.args.get('client', str(uuid.uuid4()))
+    
+    if not ip:
+        return jsonify({'error': 'No IP address provided'}), 400
+    
+    def event_stream():
+        try:
+            with active_ping_lock:
+                active_ping_connections[client_id] = {'ip': ip, 'last_active': time.time()}
+            
+            yield 'data: {"connected": true, "ip": "' + ip + '"}\n\n'
+            
+            ping_interval = 0.5  
+            while True:
+                ping_data = ping_manager.get_ping_data(ip)
+                
+                if not ping_data:
+                    ping_manager.request_ping(ip)
+                    time.sleep(ping_interval)
+                    continue  
+                else:
+                    yield 'data: ' + json.dumps(ping_data) + '\n\n'
+                
+                with active_ping_lock:
+                    if client_id in active_ping_connections:
+                        active_ping_connections[client_id]['last_active'] = time.time()
+                    else:
+                        break
+                
+                time.sleep(ping_interval)
+        
+        except GeneratorExit:
+            pass
+        finally:
+            with active_ping_lock:
+                if client_id in active_ping_connections:
+                    del active_ping_connections[client_id]
+    
+    response = Response(stream_with_context(event_stream()), mimetype="text/event-stream")
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['X-Accel-Buffering'] = 'no'  # Disable buffering for nginx
+    return response
+
+@app.route('/api/ping/stop', methods=['POST'])
+def stop_ping_stream():
+    client_id = request.json.get('client')
+    
+    if not client_id:
+        return jsonify({'error': 'No client ID provided'}), 400
+    
+    with active_ping_lock:
+        if client_id in active_ping_connections:
+            del active_ping_connections[client_id]
+            return jsonify({'success': True, 'message': 'Ping stream stopped'})
+        else:
+            return jsonify({'success': False, 'message': 'Client not found'})
+
+def cleanup_abandoned_ping_connections():
+    with active_ping_lock:
+        current_time = time.time()
+        expired_clients = [
+            client_id for client_id, data in active_ping_connections.items()
+            if current_time - data['last_active'] > 30  # 30 seconds timeout
+        ]
+        
+        for client_id in expired_clients:
+            del active_ping_connections[client_id]
 
 if __name__ == '__main__':
     if settings.get("run_as_admin", False) and not has_perms():
