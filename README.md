@@ -6,6 +6,7 @@
 - **network scanner**: scan your network to see all active devices, their ip, mac, hostname, and vendor
 - **mac address bypass**: change your mac address using registry or cmd methods without needing to restart
 - **network visualizer**: shows the users network in the in a graph/list view
+- **hotspot creator**: allows the user to easily create a hotspot so other devices can join and have internet
 
 ### other features
 
@@ -13,6 +14,15 @@
 - **settings**: customize how the app works, like auto-opening or hiding the website
 - **misc tools**: clear console, local storage, or history. download the latest oui file for vendor lookups
 
+### version overview
+
+| version | release focus | released | status |
+|---------|---------------|----------|--------|
+| `v1.4` | probably mobile related  | idk | ![WIP](https://img.shields.io/badge/status-WIP-yellow) |
+| `v1.3` | hotspot & ui polish | April 28, 2025 | ![completed](https://img.shields.io/badge/status-completed-brightgreen) |
+| `v1.2` | network mapping & ui | April 17, 2025 | ![completed](https://img.shields.io/badge/status-completed-brightgreen) |
+| `v1.1` | core optimizations | April 4, 2025 | ![completed](https://img.shields.io/badge/status-completed-brightgreen) |
+| `v1.0` | initial release | March 30, 2025 | ![completed](https://img.shields.io/badge/status-completed-brightgreen) |
 
 ## how to use
 

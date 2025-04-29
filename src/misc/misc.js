@@ -162,6 +162,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Make updateHistorySizes available globally
     window.updateHistorySizes = async function() {
+        // Only update if the misc tab is currently visible
+        const miscView = document.getElementById('miscView');
+        if (!miscView || miscView.style.display !== 'block') {
+            return null;
+        }
         try {
             const response = await fetch('/misc/history-sizes');
             const sizes = await response.json();

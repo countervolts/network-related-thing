@@ -1,0 +1,332 @@
+/* Hotspot styles */
+.hotspot-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.hotspot-status-panel {
+    grid-column: 1 / 3;
+    background-color: #1e1e1e;
+    border-radius: 5px;
+    padding: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    font-size: 18px;
+}
+
+.status-icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-color: #555;
+}
+
+.status-icon.active {
+    background-color: #4CAF50;
+    box-shadow: 0 0 8px #4CAF50;
+}
+
+.status-icon.inactive {
+    background-color: #F44336;
+}
+
+.hotspot-btn {
+    background-color: #2196F3;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s;
+}
+
+.hotspot-btn:hover {
+    background-color: #0b7dda;
+}
+
+.hotspot-btn.on {
+    background-color: #F44336;
+}
+
+.hotspot-btn.on:hover {
+    background-color: #d32f2f;
+}
+
+.hotspot-setup-panel {
+    background-color: #1e1e1e;
+    border-radius: 5px;
+    padding: 20px;
+}
+
+/* More defined, but environment-matching, input boxes */
+.hotspot-setup-panel .setting-item {
+    background: #23272f;
+    border: 1.5px solid #292e39;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(20,24,32,0.13);
+    padding: 18px 18px 14px 18px;
+    margin-bottom: 18px;
+    margin-top: 0;
+    transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.hotspot-setup-panel .setting-item:focus-within,
+.hotspot-setup-panel .setting-item:hover {
+    border-color: #3a4252;
+    box-shadow: 0 4px 18px rgba(33,150,243,0.10);
+}
+
+/* Add spacing between label and input */
+.hotspot-setup-panel .setting-label {
+    margin-bottom: 10px;
+}
+
+/* Add spacing between the two boxes */
+.hotspot-setup-panel .setting-item + .setting-item {
+    margin-top: 14px;
+}
+
+.hotspot-input {
+    width: 100%;
+    padding: 10px;
+    margin-top: 5px;
+    border: 1px solid #444;
+    border-radius: 4px;
+    background-color: #333;
+    color: #fff;
+}
+
+.connected-devices-panel {
+    background-color: #1e1e1e;
+    border-radius: 5px;
+    padding: 20px;
+}
+
+.connected-devices-list {
+    margin-top: 15px;
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+.device-item {
+    background-color: #2d2d2d;
+    padding: 12px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s, box-shadow 0.2s, border 0.2s;
+}
+
+.device-item:hover {
+    background-color: #3d3d3d;
+}
+
+.device-item.selected {
+    background-color: #232e4a;
+    border: 2.5px solid #42a5f5;
+    box-shadow: 0 0 12px 2px rgba(66,165,245,0.18), 0 1.5px 8px rgba(0,0,0,0.18);
+    color: #fff;
+    z-index: 2;
+}
+
+.device-item.selected:hover {
+    background-color: #232e4a;
+}
+
+.device-item.selected,
+.device-item.selected:hover {
+    transform: none !important;
+}
+
+.device-name {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.device-info {
+    color: #aaa;
+    font-size: 0.9em;
+}
+
+.no-devices-message {
+    color: #888;
+    font-style: italic;
+    padding: 20px 0;
+    text-align: center;
+}
+
+.device-control-panel {
+    background-color: #1e1e1e;
+    border-radius: 5px;
+    padding: 20px;
+}
+
+.selected-device-info {
+    background-color: #2d2d2d;
+    padding: 15px;
+    margin-bottom: 20px;
+    border-radius: 4px;
+}
+
+.mtu-slider {
+    width: 100%;
+    margin-top: 10px;
+    margin-bottom: 5px;
+}
+
+#mtuValue {
+    font-weight: bold;
+    margin-left: 10px;
+}
+
+.block-btn {
+    background-color: #F44336;
+    color: white;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-top: 10px;
+    width: 100%;
+}
+
+.block-btn:hover {
+    background-color: #d32f2f;
+}
+
+/* Hotspot settings button */
+.hotspot-settings-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.hotspot-settings-btn {
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 1.5em;
+    cursor: pointer;
+    margin-left: 10px;
+}
+.hotspot-settings-btn:hover {
+    color: #2196f3;
+}
+
+/* Hotspot Settings Modal Customization */
+.hotspot-modal-content {
+    background-color: #23272f;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+    padding: 32px 32px 24px 32px;
+    width: 380px;
+    color: #e0e0e0;
+    position: relative;
+    animation: modalFadeIn 0.3s;
+}
+
+@keyframes modalFadeIn {
+    from { opacity: 0; transform: translateY(-30px);}
+    to { opacity: 1; transform: translateY(0);}
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.modal-icon {
+    font-size: 2.2em;
+    color: #2196f3;
+    background: #181c22;
+    border-radius: 50%;
+    padding: 10px;
+    box-shadow: 0 2px 8px rgba(33,150,243,0.15);
+}
+
+.modal-form-group {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 18px;
+}
+
+.modal-form-group label {
+    font-weight: 500;
+    color: #90caf9;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1.05em;
+}
+
+.modal-input {
+    background: #181c22;
+    color: #e0e0e0;
+    border: 1px solid #333b4a;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 1em;
+    transition: border 0.2s, box-shadow 0.2s;
+    outline: none;
+}
+
+.modal-input:focus {
+    border: 1.5px solid #2196f3;
+    box-shadow: 0 0 0 2px rgba(33,150,243,0.12);
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.modal-btn {
+    padding: 10px 22px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1em;
+    font-weight: bold;
+    transition: background 0.2s, color 0.2s, transform 0.1s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.modal-btn.confirm {
+    background: linear-gradient(90deg, #2196f3 60%, #64b5f6 100%);
+    color: #fff;
+}
+
+.modal-btn.confirm:hover {
+    background: linear-gradient(90deg, #1976d2 60%, #42a5f5 100%);
+    transform: translateY(-2px);
+}
+
+.modal-btn.cancel {
+    background: #2d2d2d;
+    color: #f44336;
+    border: 1px solid #f44336;
+}
+
+.modal-btn.cancel:hover {
+    background: #181c22;
+    color: #fff;
+    border: 1px solid #fff;
+    transform: translateY(-2px);
+}

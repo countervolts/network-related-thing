@@ -41,7 +41,8 @@ DEFAULT_SETTINGS = {
     "auto_open_page": True,
     "debug_mode": "basic",
     "bypass_mode": "registry",
-    "run_as_admin": False
+    "run_as_admin": False,
+    "preserve_hotspot": False
 }
 
 network_controller = GarpSpoofer()
@@ -53,6 +54,357 @@ disabled_devices_cleared = False
 PING_CACHE = {}
 PING_CACHE_TIMEOUT = 2
 ping_lock = Lock()
+
+HOTSPOT_DEVICE_STATE = {}
+HOTSPOT_SETTINGS_FILE = os.path.join(APPDATA_LOCATION, "hotspot_settings.json")
+
+def enable_internet_sharing(internet_adapter, hotspot_adapter):
+    try:
+        # Get adapter GUIDs from their friendly names
+        wmi_query = f'SELECT * FROM Win32_NetworkAdapter WHERE NetConnectionID="{internet_adapter}"'
+        internet_guid = subprocess.check_output(['wmic', 'path', wmi_query, 'get', 'GUID'], 
+                                                text=True).strip().split('\n')[1].strip()
+        
+        # Enable ICS through registry
+        ics_key = r"HKLM\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\SharingConfig"
+        subprocess.run(['reg', 'add', ics_key, '/v', 'SharingMode', '/t', 'REG_DWORD', '/d', '1', '/f'], check=True)
+        subprocess.run(['reg', 'add', f"{ics_key}\\{internet_guid}", '/v', 'SharingMode', '/t', 'REG_DWORD', '/d', '1', '/f'], check=True)
+        
+        # Restart the Internet Connection Sharing service
+        subprocess.run(['net', 'stop', 'SharedAccess'], check=True)
+        subprocess.run(['net', 'start', 'SharedAccess'], check=True)
+        
+        return True
+    except Exception as e:
+        print(f"\033[91m[ERROR] Failed to enable internet sharing via registry: {e}\033[0m")
+        return False
+
+@app.route('/hotspot/status', methods=['GET'])
+def get_hotspot_status():
+    try:
+        # Use PowerShell to query the Mobile Hotspot status
+        ps_command = '''
+        Add-Type -AssemblyName System.Runtime.WindowsRuntime
+        $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | ? { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+        
+        Function Await($WinRtTask, $ResultType) {
+            $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
+            $netTask = $asTask.Invoke($null, @($WinRtTask))
+            $netTask.Wait(-1) | Out-Null
+            $netTask.Result
+        }
+        
+        # Get WiFi Hotspot API
+        $connectionProfile = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetInternetConnectionProfile()
+        $tetheringManager = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($connectionProfile)
+        
+        if ($tetheringManager.TetheringOperationalState -eq 1) {
+            # Hotspot is active
+            Write-Output "HOTSPOT_ACTIVE"
+        } else {
+            # Hotspot is not active
+            Write-Output "HOTSPOT_INACTIVE"
+        }
+        '''
+        
+        result = subprocess.run(["powershell", "-Command", ps_command], capture_output=True, text=True)
+        
+        if "HOTSPOT_ACTIVE" in result.stdout:
+            return jsonify({"enabled": True})
+        else:
+            return jsonify({"enabled": False})
+    except Exception as e:
+        if settings.get("debug_mode", "off") in ["basic", "full"]:
+            print(f"\033[91m[ERROR] Failed to get hotspot status: {e}\033[0m")
+        return jsonify({"error": f"Failed to get hotspot status: {str(e)}"}), 500
+
+@app.route('/hotspot/enable', methods=['POST'])
+def enable_hotspot():
+    try:
+        ssid = ""
+        key = ""
+        ghz = "2.4"
+        security = "WPA2"
+        max_devices = 8
+
+        if os.path.exists(HOTSPOT_SETTINGS_FILE):
+            with open(HOTSPOT_SETTINGS_FILE, "r") as f:
+                settings_data = json.load(f)
+                ssid = settings_data.get("name", ssid)
+                key = settings_data.get("password", key)
+                ghz = settings_data.get("ghz", ghz)
+                security = settings_data.get("security", security)
+                max_devices = int(settings_data.get("max_devices", max_devices))
+
+        # Use PowerShell to enable the Mobile Hotspot with our settings
+        ps_command = f'''
+        Add-Type -AssemblyName System.Runtime.WindowsRuntime
+        $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | ? {{ $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' }})[0]
+
+        Function Await($WinRtTask, $ResultType) {{
+            $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
+            $netTask = $asTask.Invoke($null, @($WinRtTask))
+            $netTask.Wait(-1) | Out-Null
+            $netTask.Result
+        }}
+
+        # Get WiFi Hotspot API
+        $connectionProfile = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetInternetConnectionProfile()
+        $tetheringManager = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($connectionProfile)
+
+        # Set configuration
+        $tetheringManager.MaxClientCount = {max_devices}
+        $config = $tetheringManager.GetCurrentAccessPointConfiguration()
+        $config.Ssid = "{ssid}"
+        $config.Passphrase = "{key}"
+        # Try to set GHz and Security if supported (these may not work on all Windows builds)
+        try {{
+            $config.Band = "{ghz}"
+        }} catch {{}}
+        try {{
+            $config.SecurityType = "{security}"
+        }} catch {{}}
+
+        $configTask = $tetheringManager.ConfigureAccessPointAsync($config)
+        Await $configTask ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
+
+        # Start hotspot
+        $task = $tetheringManager.StartTetheringAsync()
+        $result = Await $task ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
+
+        if ($result.Status -eq 0) {{
+            Write-Output "HOTSPOT_ENABLED_SUCCESS"
+        }} else {{
+            Write-Output "HOTSPOT_ENABLED_FAILURE: $($result.Status)"
+        }}
+        '''
+
+        result = subprocess.run(["powershell", "-Command", ps_command], capture_output=True, text=True)
+
+        if settings.get("debug_mode", "off") == "full":
+            print(f"\033[94m[DEBUG] PowerShell output: {result.stdout}\033[0m")
+            if result.stderr:
+                print(f"\033[91m[ERROR] PowerShell error: {result.stderr}\033[0m")
+
+        if "HOTSPOT_ENABLED_SUCCESS" in result.stdout:
+            return jsonify({"message": "Hotspot enabled successfully"})
+        else:
+            error_message = result.stdout if "HOTSPOT_ENABLED_FAILURE" in result.stdout else "Failed to enable hotspot"
+            return jsonify({"error": error_message}), 500
+    except Exception as e:
+        if settings.get("debug_mode", "off") in ["basic", "full"]:
+            print(f"\033[91m[ERROR] Failed to enable hotspot: {e}\033[0m")
+        return jsonify({"error": f"Failed to enable hotspot: {str(e)}"}), 500
+
+@app.route('/hotspot/disable', methods=['POST'])
+def disable_hotspot():
+    try:
+        ps_command = '''
+        Add-Type -AssemblyName System.Runtime.WindowsRuntime
+        $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | ? { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+        
+        Function Await($WinRtTask, $ResultType) {
+            $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
+            $netTask = $asTask.Invoke($null, @($WinRtTask))
+            $netTask.Wait(-1) | Out-Null
+            $netTask.Result
+        }
+        
+        # Get WiFi Hotspot API
+        $connectionProfile = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetInternetConnectionProfile()
+        $tetheringManager = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($connectionProfile)
+        
+        # Stop hotspot
+        $task = $tetheringManager.StopTetheringAsync()
+        $result = Await $task ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
+        
+        if ($result.Status -eq 0) {
+            Write-Output "HOTSPOT_DISABLED_SUCCESS"
+        } else {
+            Write-Output "HOTSPOT_DISABLED_FAILURE: $($result.Status)"
+        }
+        '''
+        
+        result = subprocess.run(["powershell", "-Command", ps_command], capture_output=True, text=True)
+        
+        if settings.get("debug_mode", "off") == "full":
+            print(f"\033[94m[DEBUG] PowerShell output: {result.stdout}\033[0m")
+            if result.stderr:
+                print(f"\033[91m[ERROR] PowerShell error: {result.stderr}\033[0m")
+        
+        if "HOTSPOT_DISABLED_SUCCESS" in result.stdout:
+            return jsonify({"message": "Hotspot disabled successfully"})
+        else:
+            error_message = result.stdout if "HOTSPOT_DISABLED_FAILURE" in result.stdout else "Failed to disable hotspot"
+            return jsonify({"error": error_message}), 500
+    except Exception as e:
+        if settings.get("debug_mode", "off") in ["basic", "full"]:
+            print(f"\033[91m[ERROR] Failed to disable hotspot: {e}\033[0m")
+        return jsonify({"error": f"Failed to disable hotspot: {str(e)}"}), 500
+
+@app.route('/hotspot/settings', methods=['GET', 'POST'])
+def hotspot_settings():
+    if request.method == 'GET':
+        try:
+            if os.path.exists(HOTSPOT_SETTINGS_FILE):
+                with open(HOTSPOT_SETTINGS_FILE, "r") as f:
+                    settings = json.load(f)
+                # Provide defaults for new fields
+                return jsonify({
+                    "name": settings.get("name", ""),
+                    "ghz": settings.get("ghz", "2.4"),
+                    "security": settings.get("security", "WPA2"),
+                    "max_devices": settings.get("max_devices", 8)
+                })
+            return jsonify({"name": "", "ghz": "2.4", "security": "WPA2", "max_devices": 8})
+        except Exception as e:
+            return jsonify({"error": f"Failed to get hotspot settings: {str(e)}"}), 500
+
+    elif request.method == 'POST':
+        try:
+            data = request.json
+            name = data.get('name', '').strip()
+            password = data.get('password', '').strip()
+            ghz = data.get('ghz', '2.4')
+            security = data.get('security', 'WPA2')
+            max_devices = int(data.get('max_devices', 8))
+
+            # Only require name/password if present in request (for compatibility)
+            if 'name' in data and not name:
+                return jsonify({"error": "Network name is required"}), 400
+            if 'password' in data and len(password) < 8:
+                return jsonify({"error": "Password must be at least 8 characters"}), 400
+
+            # Load existing settings and update
+            settings = {}
+            if os.path.exists(HOTSPOT_SETTINGS_FILE):
+                with open(HOTSPOT_SETTINGS_FILE, "r") as f:
+                    settings = json.load(f)
+            if name:
+                settings['name'] = name
+            if password:
+                settings['password'] = password
+            settings['ghz'] = ghz
+            settings['security'] = security
+            settings['max_devices'] = max_devices
+
+            with open(HOTSPOT_SETTINGS_FILE, "w") as f:
+                json.dump(settings, f, indent=4)
+
+            return jsonify({"message": "Hotspot settings saved successfully"})
+        except Exception as e:
+            return jsonify({"error": f"Failed to save hotspot settings: {str(e)}"}), 500
+
+@app.route('/hotspot/connected-devices', methods=['GET'])
+def get_connected_devices():
+    global HOTSPOT_DEVICE_STATE
+    try:
+        devices = []
+        found_clients = set()
+
+        # Use PowerShell to get connected clients from the Windows Hotspot API
+        ps_command = '''
+        Add-Type -AssemblyName System.Runtime.WindowsRuntime
+        $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | ? { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+        Function Await($WinRtTask, $ResultType) {
+            $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
+            $netTask = $asTask.Invoke($null, @($WinRtTask))
+            $netTask.Wait(-1) | Out-Null
+            $netTask.Result
+        }
+        $connectionProfile = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetInternetConnectionProfile()
+        $tetheringManager = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($connectionProfile)
+        if ($tetheringManager.TetheringOperationalState -ne 1) {
+            Write-Output "HOTSPOT_INACTIVE"
+            exit
+        }
+        $clients = $tetheringManager.GetTetheringClients()
+        foreach ($client in $clients) {
+            $mac = $client.MacAddress
+            Write-Output "$mac"
+        }
+        '''
+
+        result = subprocess.run(["powershell", "-Command", ps_command], capture_output=True, text=True)
+        lines = result.stdout.strip().splitlines()
+
+        if "HOTSPOT_INACTIVE" in lines:
+            HOTSPOT_DEVICE_STATE.clear()
+            if settings.get("debug_mode", "off") in ["basic", "full"]:
+                print(f"\033[94m[DEBUG] Hotspot is not active\033[0m")
+            return jsonify({"devices": []})
+
+        # Get ARP table for MAC-to-IP mapping
+        arp_result = subprocess.run(["arp", "-a"], capture_output=True, text=True)
+        arp_table = {}
+        for line in arp_result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 2 and re.match(r"(\d{1,3}\.){3}\d{1,3}", parts[0]):
+                ip = parts[0]
+                mac = parts[1].replace("-", ":").lower()
+                arp_table[mac] = ip
+
+        device_num = 1
+        current_macs = set()
+        for line in lines:
+            mac = normalize_mac_address(line.strip())
+            if not mac or mac == "00:00:00:00:00:00" or mac in found_clients:
+                continue
+            found_clients.add(mac)
+            current_macs.add(mac)
+            ip = arp_table.get(mac, "Unknown")
+
+            # Use existing id and connectedSince if present, else create new
+            if mac in HOTSPOT_DEVICE_STATE:
+                device_id = HOTSPOT_DEVICE_STATE[mac]['id']
+                connected_since = HOTSPOT_DEVICE_STATE[mac]['connectedSince']
+            else:
+                device_id = str(uuid.uuid4())
+                connected_since = time.strftime("%Y-%m-%d %H:%M:%S")
+                HOTSPOT_DEVICE_STATE[mac] = {
+                    'id': device_id,
+                    'connectedSince': connected_since
+                }
+
+            devices.append({
+                "id": device_id,
+                "ip": ip,
+                "mac": mac,
+                "name": f"Device {device_num}",
+                "connectedSince": connected_since
+            })
+            device_num += 1
+            if settings.get("debug_mode", "off") in ["basic", "full"]:
+                print(f"\033[94m[DEBUG] Found device MAC={mac}, IP={ip}\033[0m")
+
+        # Remove devices that are no longer connected
+        for mac in list(HOTSPOT_DEVICE_STATE.keys()):
+            if mac not in current_macs:
+                del HOTSPOT_DEVICE_STATE[mac]
+
+        if settings.get("debug_mode", "off") in ["basic", "full"]:
+            print(f"\033[94m[DEBUG] Found {len(devices)} hotspot connected devices\033[0m")
+
+        return jsonify({"devices": devices})
+    except Exception as e:
+        if settings.get("debug_mode", "off") in ["basic", "full"]:
+            print(f"\033[91m[ERROR] Failed to get connected devices: {e}\033[0m")
+            import traceback
+            traceback.print_exc()
+        return jsonify({"error": f"Failed to get connected devices: {str(e)}"}), 500
+    
+# Helper function to normalize MAC addresses
+def normalize_mac_address(mac):
+    if not mac:
+        return "Unknown"
+    
+    mac = re.sub(r'[^0-9a-fA-F:-]', '', mac)
+    mac = mac.lower()
+    if len(mac) == 12 and not (':' in mac or '-' in mac):
+        mac = ':'.join([mac[i:i+2] for i in range(0, 12, 2)])
+    mac = mac.replace('-', ':')
+    
+    return mac
 
 def save_disabled_devices():
     with open(DISABLED_DEVICES_FILE, "w") as f:
@@ -180,23 +532,29 @@ def get_subnet():
         raise ValueError("Unable to determine default gateway")
     
 def load_settings():
+    settings_changed = False
     if not os.path.exists(SETTINGS_FILE):
         with open(SETTINGS_FILE, "w") as f:
             json.dump(DEFAULT_SETTINGS, f, indent=4)
-        return DEFAULT_SETTINGS
+        print("\033[94m[INFO] Created new settings file with default settings in settings dir.\033[0m")
+        return DEFAULT_SETTINGS, settings_changed
 
     with open(SETTINGS_FILE, "r") as f:
         user_settings = json.load(f)
 
     updated_settings = {key: user_settings.get(key, DEFAULT_SETTINGS[key]) for key in DEFAULT_SETTINGS}
 
+    for key in DEFAULT_SETTINGS:
+        if key not in user_settings:
+            settings_changed = True
+
     if updated_settings != user_settings:
         with open(SETTINGS_FILE, "w") as f:
             json.dump(updated_settings, f, indent=4)
 
-    return updated_settings
+    return updated_settings, settings_changed
 
-settings = load_settings()
+settings, settings_changed = load_settings()
 
 def get_local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -416,23 +774,34 @@ def change_mac():
         data = request.json
         transport_name = data['transport']
         bypass_mode = settings.get("bypass_mode", "registry")
+        mac_mode = data.get('mode', 'standard')
         previous_mac = get_mac_address()
 
         if settings.get("debug_mode", "off") == "full":
             print(f"\033[94m[DEBUG] Received request to change MAC address.\033[0m")
             print(f"\033[94m[DEBUG] Transport Name: {transport_name}\033[0m")
             print(f"\033[94m[DEBUG] Bypass Mode: {bypass_mode}\033[0m")
+            print(f"\033[94m[DEBUG] MAC Mode: {mac_mode}\033[0m")
             print(f"\033[94m[DEBUG] Previous MAC Address: {previous_mac}\033[0m")
 
         if bypass_mode == "cmd":
             import random
-            new_mac = "DE{:02X}{:02X}{:02X}{:02X}{:02X}".format(
-                random.randint(0, 255),
-                random.randint(0, 255),
-                random.randint(0, 255),
-                random.randint(0, 255),
-                random.randint(0, 255)
-            )
+            if mac_mode == 'ieee':
+                new_mac = "02{:02X}{:02X}{:02X}{:02X}{:02X}".format(
+                    random.randint(0, 255),
+                    random.randint(0, 255),
+                    random.randint(0, 255),
+                    random.randint(0, 255),
+                    random.randint(0, 255)
+                )
+            else:
+                new_mac = "DE{:02X}{:02X}{:02X}{:02X}{:02X}".format(
+                    random.randint(0, 255),
+                    random.randint(0, 255),
+                    random.randint(0, 255),
+                    random.randint(0, 255),
+                    random.randint(0, 255)
+                )
             command = f'reg add "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Class\\{transport_name}" /v NetworkAddress /d {new_mac} /f'
             if settings.get("debug_mode", "off") == "full":
                 print(f"\033[94m[DEBUG] Generated new MAC address: {new_mac}\033[0m")
@@ -465,7 +834,7 @@ def change_mac():
             if settings.get("debug_mode", "off") == "full":
                 print(f"\033[94m[DEBUG] Found network configuration: {instance}\033[0m")
 
-            new_mac = init_bypass(instance[1])
+            new_mac = init_bypass(instance[1], mac_mode)
             if new_mac:
                 log_bypass_history(previous_mac, new_mac, "Registry", transport_name)
                 if settings.get("debug_mode", "off") == "full":
@@ -617,8 +986,6 @@ def get_history_sizes():
     except Exception as e:
         return jsonify({"error": f"Failed to calculate history sizes: {str(e)}"}), 500
 
-import logging
-
 class EndpointFilter(logging.Filter):
     def __init__(self, excluded_paths):
         self.excluded_paths = excluded_paths
@@ -655,6 +1022,9 @@ def manage_settings():
         return jsonify(settings)
     elif request.method == 'POST':
         updated_settings = request.json
+        # Ensure preserve_hotspot is always present
+        if "preserve_hotspot" not in updated_settings:
+            updated_settings["preserve_hotspot"] = False
         with open(SETTINGS_FILE, "w") as f:
             json.dump(updated_settings, f, indent=4)
         for key, value in updated_settings.items():
@@ -708,28 +1078,71 @@ def server_start():
     return jsonify({"message": "Server started. Clear disabled devices."})
 
 def graceful_shutdown(signal_received, frame):
-    print("\033[93m[INFO] Graceful shutdown initiated...\033[0m")
+    # Combine shutdown prints into a single statement
+    shutdown_msgs = []
+    shutdown_msgs.append("\033[93m[INFO] Graceful shutdown initiated...\033[0m")
     global DISABLED_DEVICES
 
     # Re-enable all disabled devices
     for device in DISABLED_DEVICES:
         try:
             mac = device['mac']
-            print(f"\033[94m[INFO] Re-enabling device with MAC: {mac}\033[0m")
             network_controller.restore_device(mac)
         except Exception as e:
             print(f"\033[91m[ERROR] Failed to re-enable device {mac}: {e}\033[0m")
 
     # Save the disabled devices list to the file
     save_disabled_devices()
-    print("\033[92m[INFO] Disabled devices list saved on shutdown.\033[0m")
+    shutdown_msgs.append("\033[92m[INFO] Disabled devices list saved on shutdown.\033[0m")
 
     # Clear the disabled devices list
     DISABLED_DEVICES = []
-    print("\033[92m[INFO] All disabled devices have been re-enabled.\033[0m")
+    shutdown_msgs.append("\033[92m[INFO] All disabled devices have been re-enabled.\033[0m")
 
-    # Exit the application
-    print("\033[92m[INFO] Server shutting down gracefully.\033[0m")
+    # Stop hotspot if preserve_hotspot is False
+    if not settings.get("preserve_hotspot", False):
+        try:
+            # Check if hotspot is running before stopping
+            ps_status = '''
+            Add-Type -AssemblyName System.Runtime.WindowsRuntime
+            $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | ? { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+            Function Await($WinRtTask, $ResultType) {
+                $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
+                $netTask = $asTask.Invoke($null, @($WinRtTask))
+                $netTask.Wait(-1) | Out-Null
+                $netTask.Result
+            }
+            $connectionProfile = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetInternetConnectionProfile()
+            $tetheringManager = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($connectionProfile)
+            if ($tetheringManager.TetheringOperationalState -eq 1) {
+                Write-Output "HOTSPOT_ACTIVE"
+            } else {
+                Write-Output "HOTSPOT_INACTIVE"
+            }
+            '''
+            result = subprocess.run(["powershell", "-Command", ps_status], capture_output=True, text=True)
+            if "HOTSPOT_ACTIVE" in result.stdout:
+                shutdown_msgs.append("\033[93m[INFO] Stopping hotspot due to shutdown (preserve_hotspot is off)...\033[0m")
+                subprocess.run(["powershell", "-Command", '''
+                    Add-Type -AssemblyName System.Runtime.WindowsRuntime
+                    $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | ? { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+                    Function Await($WinRtTask, $ResultType) {
+                        $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
+                        $netTask = $asTask.Invoke($null, @($WinRtTask))
+                        $netTask.Wait(-1) | Out-Null
+                        $netTask.Result
+                    }
+                    $connectionProfile = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetInternetConnectionProfile()
+                    $tetheringManager = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($connectionProfile)
+                    $task = $tetheringManager.StopTetheringAsync()
+                    $result = Await $task ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
+                '''], capture_output=True, text=True)
+                shutdown_msgs.append("\033[92m[INFO] Hotspot stopped during shutdown.\033[0m")
+        except Exception as e:
+            print(f"\033[91m[ERROR] Failed to stop hotspot during shutdown: {e}\033[0m")
+
+    shutdown_msgs.append("\033[92m[INFO] Server shutting down gracefully.\033[0m")
+    print('\n'.join(shutdown_msgs))
     sys.exit(0)
 
 signal.signal(signal.SIGINT, graceful_shutdown)
@@ -828,12 +1241,26 @@ if __name__ == '__main__':
         cli = sys.modules['flask.cli']
         cli.show_server_banner = lambda *x: None
 
-    print(f"\033[92m[INFO] Server running at http://{CREATOR_IP}:5000\033[0m")
+    # Hardcoded to always use port 8080
+    PORT = 8080
+    print(f"\033[92m[INFO] Server running at http://{CREATOR_IP}:{PORT}\033[0m")
+
+    if settings_changed:
+        for key in DEFAULT_SETTINGS:
+            if key not in settings:
+                print(f"\033[93m[INFO] New setting detected: '{key}' (added to settings dir)\033[0m")
 
     if settings["auto_open_page"]:
         try:
-            subprocess.Popen(['start', 'http://localhost:5000'], shell=True)
+            # Updated to use port 8080
+            subprocess.Popen(['start', f'http://localhost:{PORT}'], shell=True)
         except Exception as e:
             print(f"\033[91m[ERROR] Failed to open browser: {e}\033[0m")
 
-    app.run(host='0.0.0.0', port=5000, threaded=True)
+    try:
+        # Directly run on 127.0.0.1 (localhost) with port 8080
+        print(f"\033[93m[INFO] Starting server on localhost:{PORT}...\033[0m")
+        app.run(host='127.0.0.1', port=PORT, threaded=True)
+    except Exception as e:
+        print(f"\033[91m[ERROR] Failed to start server: {e}\033[0m")
+        print("\033[93m[INFO] Try running as administrator or check if port 8080 is already in use.\033[0m")

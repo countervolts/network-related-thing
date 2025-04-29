@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="src/bypass/styles.css">
     <link rel="stylesheet" href="src/history/styles.css">
     <link rel="stylesheet" href="src/visualizer/styles.css">
+    <link rel="stylesheet" href="src/hotspot/styles.css">
 </head>
 <body>
     <div class="nav-container">
@@ -18,7 +19,8 @@
                 <a href="#scanner" id="scannerTab">Scanner</a>
                 <a href="#bypass" id="bypassTab">Bypass</a>
                 <a href="#history" id="historyTab">History</a>
-                <a href="#visualizer" id="visualizerTab">Visualizer <span style="font-size: 0.7em; color: #999; font-weight: normal;">(new!)</span></a>
+                <a href="#visualizer" id="visualizerTab">Visualizer</a>
+                <a href="#hotspot" id ="hotspotTab">Hotspot <span style="font-size: 0.7em; color: #999; font-weight: normal;">(new!)</span></a>
                 <a href="#misc" id="miscTab">Misc</a>
                 <a href="#settings" id="settingsTab">Settings</a>
             </ul>
@@ -97,58 +99,68 @@
         
         <div id="settingsView" class="view" style="display: none;">
             <h1>Settings</h1>
-            <div id="settingsContent">
-                <div class="setting-item">
-                    <label for="hideWebsiteToggle" class="setting-label">
-                        <span>Hide Website</span>
-                        <p class="setting-description">If enabled, only the creator can access the website. Unauthorized users will be redirected.</p>
-                    </label>
-                    <input type="checkbox" id="hideWebsiteToggle" class="toggle">
+            <div class="settings-section">
+                <div class="section-title">General</div>
+                <div class="settings-grid">
+                    <div class="setting-item">
+                        <label for="hideWebsiteToggle" class="setting-label">
+                            <span>Hide Website</span>
+                            <p class="setting-description">If enabled, only the creator can access the website. Unauthorized users will be redirected.</p>
+                        </label>
+                        <input type="checkbox" id="hideWebsiteToggle" class="toggle">
+                    </div>
+                    <div class="setting-item">
+                        <label for="autoOpenToggle" class="setting-label">
+                            <span>Auto Open Page</span>
+                            <p class="setting-description">If enabled, the website will automatically open in your browser when the server starts.</p>
+                        </label>
+                        <input type="checkbox" id="autoOpenToggle" class="toggle">
+                    </div>
+                    <div class="setting-item">
+                        <label for="runAsAdminToggle" class="setting-label">
+                            <span>Run as Admin</span>
+                            <p class="setting-description">If enabled, the application will run with administrative privileges whenever it is started.</p>
+                        </label>
+                        <input type="checkbox" id="runAsAdminToggle" class="toggle">
+                    </div>
+                    <div class="setting-item">
+                        <label for="preserveHotspotToggle" class="setting-label">
+                            <span>Preserve Hotspot</span>
+                            <p class="setting-description">If enabled, your hotspot will remain running when the program stops. If disabled, the hotspot will be stopped during shutdown.</p>
+                        </label>
+                        <input type="checkbox" id="preserveHotspotToggle" class="toggle">
+                    </div>
                 </div>
-                <div class="setting-item">
-                    <label for="autoOpenToggle" class="setting-label">
-                        <span>Auto Open Page</span>
-                        <p class="setting-description">If enabled, the website will automatically open in your browser when the server starts.</p>
-                    </label>
-                    <input type="checkbox" id="autoOpenToggle" class="toggle">
+                <div class="section-title">Bypass</div>
+                <div class="settings-grid">
+                    <div class="setting-item">
+                        <label for="bypassModeDropdown" class="setting-label">
+                            <div class="setting-header">
+                                <span>Bypass Mode</span>
+                                <div class="inline-info-icon" id="bypassModeInfo">?</div>
+                            </div>
+                            <p class="setting-description">Select the method to use for bypassing (commands or Registry).</p>
+                        </label>
+                        <select id="bypassModeDropdown" class="dropdown">
+                            <option value="registry" selected>Registry</option>
+                            <option value="cmd">CMD</option>
+                        </select>
+                    </div>
                 </div>
-                
-                <div class="setting-item">
-                    <label for="runAsAdminToggle" class="setting-label">
-                        <span>Run as Admin</span>
-                        <p class="setting-description">If enabled, the application will restart with administrative privileges.</p>
-                    </label>
-                    <input type="checkbox" id="runAsAdminToggle" class="toggle">
+                <div class="section-title">Developer Settings</div>
+                <div class="settings-grid">
+                    <div class="setting-item">
+                        <label for="debugModeDropdown" class="setting-label">
+                            <span>Debug Mode</span>
+                            <p class="setting-description">Select the level of debug information to display in the server logs (No restart required).</p>
+                        </label>
+                        <select id="debugModeDropdown" class="dropdown">
+                            <option value="off">Off</option>
+                            <option value="basic">Basic</option>
+                            <option value="full">Full</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="setting-item">
-                    <label for="bypassModeDropdown" class="setting-label">
-                        <div class="setting-header">
-                            <span>Bypass Mode</span>
-                            <div class="inline-info-icon" id="bypassModeInfo">?</div>
-                        </div>
-                        <p class="setting-description">Select the method to use for bypassing (commands or Registry).</p>
-                    </label>
-                    <select id="bypassModeDropdown" class="dropdown">
-                        <option value="registry" selected>Registry</option>
-                        <option value="cmd">CMD</option>
-                    </select>
-                </div>
-        
-                <hr class="settings-separator">
-        
-                <h2 class="developer-settings-header">Developer Settings</h2>
-                <div class="setting-item">
-                    <label for="debugModeDropdown" class="setting-label">
-                        <span>Debug Mode</span>
-                        <p class="setting-description">Select the level of debug information to display in the server logs (No restart required).</p>
-                    </label>
-                    <select id="debugModeDropdown" class="dropdown">
-                        <option value="off">Off</option>
-                        <option value="basic">Basic</option>
-                        <option value="full">Full</option>
-                    </select>
-                </div>
-        
                 <button id="applySettingsBtn" class="apply-btn">Apply Changes</button>
             </div>
         </div>
@@ -219,21 +231,58 @@
             </div>
         </div>
 
-        <div id="confirmationModal" class="modal" style="display: none;">
-            <div class="modal-content">
-                <h2>Confirm Changes</h2>
-                <p>The following changes will be applied:</p>
-                <ul id="changesList" class="changes-list"></ul>
-                <div class="modal-actions">
-                    <button id="confirmBtn" class="modal-btn confirm">Yes</button>
-                    <button id="cancelBtn" class="modal-btn cancel">No</button>
+        <div id="hotspotView" class="view" style="display: none;">
+            <h1>Mobile Hotspot</h1>
+            <div class="hotspot-container">
+                <div class="hotspot-status-panel">
+                    <div class="status-indicator">
+                        <span id="hotspotStatusText">Checking status...</span>
+                        <div id="hotspotStatusIcon" class="status-icon"></div>
+                    </div>
+                    <button id="toggleHotspotBtn" class="hotspot-btn">Enable Hotspot</button>
                 </div>
+                
+                <div class="hotspot-setup-panel">
+                    <h3>Hotspot Settings</h3>
+                    <div class="setting-item">
+                        <label for="hotspotName" class="setting-label">Network Name (SSID)</label>
+                        <input type="text" id="hotspotName" class="hotspot-input" placeholder="Enter network name">
+                    </div>
+                    <div class="setting-item">
+                        <label for="hotspotPassword" class="setting-label">Password (8+ characters)</label>
+                        <input type="text" id="hotspotPassword" class="hotspot-input" placeholder="Enter password">
+                    </div>
+                    <button id="saveHotspotSettingsBtn" class="apply-btn">Save Settings</button>
+                </div>
+                
+                <div class="connected-devices-panel">
+                    <h3>Connected Devices</h3>
+                    <div id="connectedDevicesList" class="connected-devices-list">
+                        <div class="no-devices-message">No devices connected</div>
+                    </div>
+                </div>
+                
+                <div class="device-control-panel" style="display: none;"> <!-- too lazy to rename -->
+                    <h3>Device Info</h3>
+                    <div id="selectedDeviceInfo" class="selected-device-info"></div>
+                </div>
+        </div>
+    </div>
+
+    <div id="confirmationModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h2>Confirm Changes</h2>
+            <p>The following changes will be applied:</p>
+            <ul id="changesList" class="changes-list"></ul>
+            <div class="modal-actions">
+                <button id="confirmBtn" class="modal-btn confirm">Yes</button>
+                <button id="cancelBtn" class="modal-btn cancel">No</button>
             </div>
         </div>
-
-        <div id="notificationContainer" class="notification-container"></div>
-        <div class="version">v1.2</div>
     </div>
+
+    <div id="notificationContainer" class="notification-container"></div>
+    <div class="version">v1.3</div>
 
     <script src="src/scanner/app.js"></script>
     <script src="src/settings/settings.js"></script>
@@ -241,20 +290,22 @@
     <script src="src/bypass/yep.js"></script>
     <script src="src/history/tracker.js"></script>
     <script src="src/visualizer/visualizer.js"></script>
+    <script src="src/hotspot/hahaspot.js"></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             function showViewFromHash() {
-                    const hash = window.location.hash || '#scanner';
-                    const views = {
-                        '#scanner': 'scannerView',
-                        '#bypass': 'bypassView',
-                        '#history': 'historyView',
-                        '#visualizer': 'visualizerView',
-                        '#settings': 'settingsView',
-                        '#misc': 'miscView'
-                    };
-
+                const hash = window.location.hash || '#scanner';
+                const views = {
+                    '#scanner': 'scannerView',
+                    '#bypass': 'bypassView',
+                    '#history': 'historyView',
+                    '#visualizer': 'visualizerView',
+                    '#settings': 'settingsView',
+                    '#misc': 'miscView',
+                    '#hotspot': 'hotspotView'
+                };
+        
                 Object.values(views).forEach(viewId => {
                     document.getElementById(viewId).style.display = 'none';
                 });
@@ -262,17 +313,17 @@
                 if (viewId) {
                     document.getElementById(viewId).style.display = 'block';
                 }
-
+        
                 const scannerView = document.getElementById('scannerView');
                 const resultsBody = document.getElementById('resultsBody');
-
+        
                 if (!scannerView || !resultsBody) {
                     console.error('Initialization error: scannerView or resultsBody is missing from the DOM.');
                 } else {
                     console.log('scannerView and resultsBody are properly initialized.');
                 }
             }
-
+        
             window.addEventListener('hashchange', showViewFromHash);
             showViewFromHash();
         });

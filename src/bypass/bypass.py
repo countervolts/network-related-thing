@@ -166,8 +166,11 @@ def restart_all_adapters(target_ip=None):
         logger.error(f"Unexpected error while restarting network adapters: {e}")
         return False
 
-def rand0m_hex():
-    return 'DE' + ''.join(random.choices('0123456789ABCDEF', k=10))
+def rand0m_hex(mode='standard'):
+    if mode == 'ieee':
+        return '02' + ''.join(random.choices('0123456789ABCDEF', k=10))
+    else:
+        return 'DE' + ''.join(random.choices('0123456789ABCDEF', k=10))
 
 def get_adapter_name(sub_name):
     key_path = f"SYSTEM\\ControlSet001\\Control\\Class\\{{4d36e972-e325-11ce-bfc1-08002be10318}}\\{sub_name}"
@@ -181,7 +184,7 @@ def get_adapter_name(sub_name):
     logger.error("Failed to retrieve adapter name after 3 attempts")
     return None
 
-def init_bypass(sub_name):
+def init_bypass(sub_name, mac_mode='standard'):
     key_path = f"SYSTEM\\ControlSet001\\Control\\Class\\{{4d36e972-e325-11ce-bfc1-08002be10318}}\\{sub_name}"
     adapter_name = get_adapter_name(sub_name)
     
@@ -193,20 +196,23 @@ def init_bypass(sub_name):
     start_time = time.time()  # Start timing
 
     for attempt in range(3):
-        value_data = rand0m_hex()
+        if mac_mode == 'ieee':
+            new_mac = "02" + rand0m_hex()[2:]  # Use just "02" for first byte
+        else:
+            new_mac = "DE" + rand0m_hex()[2:]  # Use "DE" for first byte
         try:
             with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_ALL_ACCESS) as key:
-                winreg.SetValueEx(key, 'NetworkAddress', 0, winreg.REG_SZ, value_data)
-                print(f"\033[94m[DEBUG] Attempt {attempt+1}: Updated registry with new MAC: {value_data}\033[0m")
+                winreg.SetValueEx(key, 'NetworkAddress', 0, winreg.REG_SZ, new_mac)
+                print(f"\033[94m[DEBUG] Attempt {attempt+1}: Updated registry with new MAC: {new_mac}\033[0m")
                 
                 if restart_all_adapters():
                     end_time = time.time()  # End timing
                     elapsed_time = end_time - start_time
                     print(f"\033[94m[DEBUG] Attempt {attempt+1}: Successfully bypassed MAC address for adapter: {adapter_name}\033[0m")
-                    print(f"\033[94m[DEBUG] MAC address changed successfully to {value_data}\033[0m")
+                    print(f"\033[94m[DEBUG] MAC address changed successfully to {new_mac}\033[0m")
                     print(f"\033[94m[DEBUG] Bypass process completed in {elapsed_time:.2f} seconds\033[0m")
                     time.sleep(5)
-                    return value_data
+                    return new_mac
                 
                 print(f"\033[94m[DEBUG] Attempt {attempt+1}: MAC change failed for adapter: {adapter_name}\033[0m")
                 time.sleep(2)

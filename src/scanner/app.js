@@ -509,14 +509,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    const scannerTab = document.getElementById('scannerTab');
-    const bypassTab = document.getElementById('bypassTab');
-    const settingsTab = document.getElementById('settingsTab');
-    const miscTab = document.getElementById('miscTab');
-    const scannerView = document.getElementById('scannerView');
-    const settingsView = document.getElementById('settingsView');
-    const miscView = document.getElementById('miscView');
-
     function hideAllViews() {
         scannerView.style.display = 'none';
         bypassView.style.display = 'none';
@@ -578,7 +570,3 @@ async function checkServerStart() {
         console.error('Failed to check server start:', error);
     }
 }
-
-document.addEventListener('DOMContentLoaded', () => {
-    checkServerStart();
-});

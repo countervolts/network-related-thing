@@ -47,17 +47,31 @@ document.getElementById('historyTab').addEventListener('click', async () => {
             </div>
         `).join('');
 
-        bypassHistoryList.innerHTML = bypassHistory.map(item => `
+        bypassHistoryList.innerHTML = bypassHistory.map(item => {
+            // Extract method information if available
+            let mode = item.method || "Unknown"; // Registry or CMD
+            let method = "Standard";
+            
+            // Determine the method based on MAC format
+            if (item.newMac && item.newMac.toUpperCase().startsWith('02')) {
+                method = "IEEE";
+            } else if (item.newMac && item.newMac.toUpperCase().startsWith('DE')) {
+                method = "Standard";
+            }
+            
+            return `
             <div class="history-item">
                 <div>
                     <strong>Time:</strong> ${formatTime(item.time)} <br>
                     <strong>Last MAC:</strong> ${item.previousMac} <br>
                     <strong>New MAC:</strong> ${item.newMac} <br>
-                    <strong>Method:</strong> ${item.method}
+                    <strong>Mode:</strong> ${mode} <br>
+                    <strong>Method:</strong> ${method}
                 </div>
                 <button onclick="revertMac('${item.transport}', '${item.previousMac}', '${item.newMac}')">Revert</button>
             </div>
-        `).join('');
+            `;
+        }).join('');
     } catch (error) {
         console.error('Failed to load history:', error);
         showNotification('Failed to load history.', 'error');

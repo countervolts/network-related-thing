@@ -616,7 +616,7 @@ function updateDeviceCount() {
 
 function showNoDataMessage() {
     const deviceDetails = document.getElementById('deviceDetailsContent');
-    deviceDetails.innerHTML = '<p class="details-prompt">No network data available. Please run a scan first.</p>';
+    deviceDetails.innerHTML = '<p class="details-prompt">No network data available. Please run a full scan first.</p>';
     
     const networkGraph = document.getElementById('networkGraph');
     
@@ -630,49 +630,10 @@ function showNoDataMessage() {
         message.style.transform = 'translate(-50%, -50%)';
         message.style.color = '#a0a0a0';
         message.style.fontSize = '18px';
-        message.textContent = 'No network data available. Please run a scan.';
+        message.textContent = 'No network data available. Please run a full scan.';
         
         networkGraph.appendChild(message);
-    }
-    
-    if (!networkData.nodes || networkData.nodes.length === 0) {
-        const sampleData = [
-            { 
-                ip: '192.168.1.1', 
-                mac: '00:11:22:33:44:55', 
-                hostname: 'router.local', 
-                vendor: 'RouterCo', 
-                is_gateway: true,
-                is_local: false
-            },
-            { 
-                ip: '192.168.1.100', 
-                mac: 'AA:BB:CC:DD:EE:FF', 
-                hostname: 'your-pc.local', 
-                vendor: 'YourPC', 
-                is_gateway: false,
-                is_local: true
-            },
-            { 
-                ip: '192.168.1.101', 
-                mac: '11:22:33:44:55:66', 
-                hostname: 'smartphone.local', 
-                vendor: 'AppleInc', 
-                is_gateway: false,
-                is_local: false
-            },
-            { 
-                ip: '192.168.1.102', 
-                mac: 'AA:22:CC:44:EE:66', 
-                hostname: 'smart-tv.local', 
-                vendor: 'SamsungElectronics', 
-                is_gateway: false,
-                is_local: false
-            }
-        ];
-        
-        networkData = processNetworkData(sampleData);
-        updateVisualization();
+
     }
 }
 

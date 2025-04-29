@@ -35,6 +35,15 @@ document.getElementById('bypassTab').addEventListener('click', async () => {
                         <h4>Standard Method</h4>
                         <p>Generates a random MAC address starting with DE. This will change your device identity on the network.</p>
                     </div>
+                    
+                    <div class="tooltip-item">
+                        <h4>IEEE Standard Method</h4>
+                        <p>Generates a random MAC address starting with 02, which follows IEEE standards for locally administered addresses. May have better compatibility with some networks.</p>
+                    </div>
+                    
+                    <div class="tooltip-warning">
+                        <strong>Note:</strong> Both methods work the same way to change your MAC address. The IEEE method is recommended as it follows proper standards and may have better network compatibility.
+                    </div>
                 `;
                 
                 infoContainer.appendChild(infoIcon);
@@ -46,6 +55,17 @@ document.getElementById('bypassTab').addEventListener('click', async () => {
         }
 
         const list = document.getElementById('adapterList');
+
+        // --- Preserve dropdown selections before updating the list ---
+        const previousSelections = {};
+        adapters.forEach(adapter => {
+            const dropdown = document.getElementById(`bypassMode-${adapter.transport}`);
+            if (dropdown) {
+                previousSelections[adapter.transport] = dropdown.value;
+            }
+        });
+
+        // --- Update the HTML ---
         list.innerHTML = adapters.map(adapter => `
             <div class="adapter-item">
                 <h3>${adapter.description} ${adapter.default ? '(Default)' : ''}</h3>
@@ -56,7 +76,8 @@ document.getElementById('bypassTab').addEventListener('click', async () => {
                         <div class="bypass-mode-selector">
                             <label for="bypassMode-${adapter.transport}">MAC Change Mode:</label>
                             <select id="bypassMode-${adapter.transport}" class="bypass-mode-dropdown">
-                                <option value="standard">Standard Method</option>
+                                <option value="standard">Standard Method (DE)</option>
+                                <option value="ieee">IEEE Standard Method (02)</option>
                             </select>
                         </div>
                     ` : ''}
@@ -68,6 +89,15 @@ document.getElementById('bypassTab').addEventListener('click', async () => {
                 </div>
             </div>
         `).join('');       
+
+        // --- Restore previous dropdown selections if possible ---
+        adapters.forEach(adapter => {
+            const dropdown = document.getElementById(`bypassMode-${adapter.transport}`);
+            if (dropdown && previousSelections[adapter.transport]) {
+                dropdown.value = previousSelections[adapter.transport];
+            }
+        });
+
     } catch (error) {
         showStatus(error.message, 'error');
     }
@@ -75,12 +105,13 @@ document.getElementById('bypassTab').addEventListener('click', async () => {
 
 function changeMac(transport) {
     const bypassMode = document.querySelector('.btn-bypass').textContent.includes('REGISTRY') ? 'registry' : 'cmd';
+    const dropdown = document.getElementById(`bypassMode-${transport}`);
+    const macMode = dropdown ? dropdown.value : 'standard';
     
-    let payload = { transport: transport };
-    
-    if (bypassMode === 'registry') {
-        payload.mode = 'standard';
-    }
+    let payload = { 
+        transport: transport,
+        mode: macMode
+    };
     
     fetch('/bypass/change-mac', {
         method: 'POST',
