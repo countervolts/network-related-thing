@@ -247,7 +247,7 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log(`Starting ${scanType}...`);
 
         try {
-            const response = await fetch(`http://localhost:5000/${endpoint}`);
+            const response = await fetch(`http://localhost:8080/${endpoint}`);
             console.log(`Response received for ${scanType}:`, response);
 
             if (!response.ok) {
