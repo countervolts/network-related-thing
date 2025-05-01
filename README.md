@@ -18,7 +18,7 @@
 
 | version | release focus | released | status |
 |---------|---------------|----------|--------|
-| `v1.4` | probably mobile related  | idk | ![WIP](https://img.shields.io/badge/status-WIP-yellow) |
+| `v1.4` | packet forwarding  | idk | ![WIP](https://img.shields.io/badge/status-WIP-yellow) |
 | `v1.3` | hotspot & ui polish | April 28, 2025 | ![completed](https://img.shields.io/badge/status-completed-brightgreen) |
 | `v1.2` | network mapping & ui | April 17, 2025 | ![completed](https://img.shields.io/badge/status-completed-brightgreen) |
 | `v1.1` | core optimizations | April 4, 2025 | ![completed](https://img.shields.io/badge/status-completed-brightgreen) |
