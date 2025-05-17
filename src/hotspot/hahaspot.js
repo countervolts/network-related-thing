@@ -342,7 +342,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             let btn;
             if (toggleButtonParent === statusPanel && toggleButton) {
-                btn = toggleButton;
+                btn = toggleButton.cloneNode(true);
+                toggleButton.replaceWith(btn);
             } else {
                 btn = document.createElement('button');
                 btn.id = 'toggleHotspotBtn';

@@ -570,3 +570,7 @@ async function checkServerStart() {
         console.error('Failed to check server start:', error);
     }
 }
+
+if (window.loadStatistics) {
+    window.loadStatistics();
+}

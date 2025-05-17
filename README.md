@@ -7,6 +7,7 @@
 - **mac address bypass**: change your mac address using registry or cmd methods without needing to restart
 - **network visualizer**: shows the users network in the in a graph/list view
 - **hotspot creator**: allows the user to easily create a hotspot so other devices can join and have internet
+- **Connection monitor**: allows the user to see connections to the users computer
 
 ### other features
 
@@ -18,7 +19,7 @@
 
 | version | release focus | released | status |
 |---------|---------------|----------|--------|
-| `v1.4` | packet forwarding  | idk | ![WIP](https://img.shields.io/badge/status-WIP-yellow) |
+| `v1.4` | updater, home and monitoring with electron support (and more ui cleanup)  | May 17, 2025 | ![WIP](https://img.shields.io/badge/status-completed-brightgreen) |
 | `v1.3` | hotspot & ui polish | April 28, 2025 | ![completed](https://img.shields.io/badge/status-completed-brightgreen) |
 | `v1.2` | network mapping & ui | April 17, 2025 | ![completed](https://img.shields.io/badge/status-completed-brightgreen) |
 | `v1.1` | core optimizations | April 4, 2025 | ![completed](https://img.shields.io/badge/status-completed-brightgreen) |

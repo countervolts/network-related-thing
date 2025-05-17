@@ -3,5 +3,7 @@ netifaces
 requests
 pywin32
 getmac
+GPUtil
+psutil
 scapy
 flask

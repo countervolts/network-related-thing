@@ -4,32 +4,141 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>network related things</title>
-    <link rel="stylesheet" href="src/scanner/styles.css">
+    <link rel="stylesheet" href="src/scanner/main.css">
     <link rel="stylesheet" href="src/settings/styles.css">
     <link rel="stylesheet" href="src/misc/styles.css">
     <link rel="stylesheet" href="src/bypass/styles.css">
     <link rel="stylesheet" href="src/history/styles.css">
     <link rel="stylesheet" href="src/visualizer/styles.css">
     <link rel="stylesheet" href="src/hotspot/styles.css">
+    <link rel="stylesheet" href="src/home/styles.css">
+    <link rel="stylesheet" href="src/updater/styles.css">
+    <link rel="stylesheet" href="src/monitor/styles.css">
 </head>
 <body>
     <div class="nav-container">
         <nav class="nav-menu">
-            <ul>
-                <a href="#scanner" id="scannerTab">Scanner</a>
-                <a href="#bypass" id="bypassTab">Bypass</a>
-                <a href="#history" id="historyTab">History</a>
-                <a href="#visualizer" id="visualizerTab">Visualizer</a>
-                <a href="#hotspot" id ="hotspotTab">Hotspot <span style="font-size: 0.7em; color: #999; font-weight: normal;">(new!)</span></a>
-                <a href="#misc" id="miscTab">Misc</a>
-                <a href="#settings" id="settingsTab">Settings</a>
-            </ul>
+            <a href="#home" id="homeTab" class="nav-link">Home <span style="font-size: 0.7em; color: #999; font-weight: normal;">(new!)</span></a>
+            
+            <div class="nav-separator">Network Tools</div>
+            <a href="#bypass" id="bypassTab" class="nav-link">Bypass</a>
+            <a href="#hotspot" id="hotspotTab" class="nav-link">Hotspot</a>
+            
+            <div class="nav-separator">Analysis</div>
+            <a href="#scanner" id="scannerTab" class="nav-link">Scanner</a>
+            <a href="#monitor" id="monitorTab" class="nav-link">Monitor <span style="font-size: 0.7em; color: #999; font-weight: normal;">(new!)</span></a>
+            <a href="#visualizer" id="visualizerTab" class="nav-link">Visualizer</a>
+            
+            <div class="nav-separator">System</div>
+            <a href="#history" id="historyTab" class="nav-link">History</a>
+            <a href="#updater" id="updaterTab" class="nav-link">Updater <span style="font-size: 0.7em; color: #999; font-weight: normal;">(new!)</span></a>
+            <a href="#misc" id="miscTab" class="nav-link">Misc</a>
+            <a href="#settings" id="settingsTab" class="nav-link">Settings</a>
         </nav>
     </div>
 
     <div class="container">
-        
-        <div id="scannerView" class="view" style="display: block;">
+        <div id="homeView" class="view" style="display: block;">
+            <h1>Welcome</h1>
+            <div class="home-container">
+                <div class="welcome-message">
+                    <h2>Network related thing</h2>
+                    <p>Bypass v3 with some extra networking related things (hence the name)</p>
+                </div>
+    
+                <div class="home-section">
+                    <h3 class="section-title">Your Activity</h3>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-icon bypass-icon"></div>
+                            <div class="stat-info">
+                                <span class="stat-count" id="bypassCount">0</span>
+                                <span class="stat-label">Bypasses</span>
+                            </div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-icon basic-scan-icon"></div>
+                            <div class="stat-info">
+                                <span class="stat-count" id="basicScanCount">0</span>
+                                <span class="stat-label">Basic Scans</span>
+                            </div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-icon full-scan-icon"></div>
+                            <div class="stat-info">
+                                <span class="stat-count" id="fullScanCount">0</span>
+                                <span class="stat-label">Full Scans</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>                               
+    
+                
+                <div class="home-section">
+                    <h3 class="section-title">About You</h3>
+                    <div class="about-container">
+                        <div class="about-content system-info">
+                            <div class="info-columns">    
+                                <div class="info-column">
+                                    <h4>Network</h4>
+                                    <p><strong>Internal IP:</strong> <span id="internalIp">Loading...</span></p>
+                                    <p><strong>External IP:</strong> <span id="externalIp" class="blurred-text">Loading...</span></p>
+                                    <p><strong>MAC Address:</strong> <span id="macAddress" class="blurred-text">Loading...</span></p>
+                                    <p><strong>ISP:</strong> <span id="ispName" class="blurred-text">Loading...</span></p>
+                                </div>
+                                <div class="info-column">
+                                    <h4>Hardware</h4>
+                                    <p><strong>CPU:</strong> <span id="cpuInfo">Loading...</span></p>
+                                    <p><strong>GPU:</strong> <span id="gpuInfo">Loading...</span></p>
+                                    <p><strong>Memory:</strong> <span id="memoryInfo">Loading...</span></p>
+                                    <p><strong>Storage:</strong> <span id="storageInfo">Loading...</span></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="home-section">
+                    <h3 class="section-title">Curious?</h3>
+                    <div class="faq-container">
+                        <div class="faq-item">
+                            <div class="faq-question">Is it possible to bypass without sending a notification?</div>
+                            <div class="faq-answer">No. Most network control software uses a heartbeat or real-time traffic monitoring system to detect new devices. These systems usually work directly with the router to track activity as it happens.</div>                            
+                        </div>
+                        <div class="faq-item">
+                            <div class="faq-question">Will there ever be a way to mask or hide devices?</div>
+                            <div class="faq-answer">Not reliably. Network management tools detect devices either through active heartbeat checks or by passively watching for any traffic. If your device sends or receives any data, it will show up in the tool.</div>                            
+                        </div>
+                        <div class="faq-item">
+                            <div class="faq-question">Could you just write some code that will unpause a device?</div>
+                            <div class="faq-answer">No... That just isnt possible. When a device is paused, the router is told to block all incoming and outgoing traffic based on that device's mac or IP. No code running on the device can bypass that block if the router is enforcing it correctly.</div>       
+                        </div>
+                        <div class="faq-item">
+                            <div class="faq-question">How does blocking or pausing a device actually work?</div>
+                            <div class="faq-answer">Most network control systems block devices at Layer 2 using the mac address or at Layer 3 using the IP address. If blocked at Layer 2, the router will drop all traffic to and from the device based on its mac. If blocked at Layer 3, the router may refuse to give the device an IP address or block traffic from its current one. In both cases, traffic is silently dropped and the device cannot access the network.</div>
+                        </div>
+                        <div class="faq-item">
+                            <div class="faq-question">How do you change your mac address on a phone?</div>
+                            <div class="faq-answer">The only reliable way to force a new mac address on iOS is by doing a full network settings reset (or by changing your 'Private Wi-Fi Address' from on to off as long that mac isnt paused/blocked). idk how to on android. You could also just hotspot from your computer to your device and youll have internet.</div>
+                        </div>
+                        <div class="faq-item">
+                            <div class="faq-question">Why does changing my mac address give me internet?</div>
+                            <div class="faq-answer">When you change your mac address and your router is using layer 2 based network blocking/pausing, a new mac address will make you appear as a completely new device. While if your network uses layer 3 blocking (since this is ip based) this bypassing method wont work</div>
+                        </div>
+                    </div>
+                </div>  
+                <div class="home-section">
+                    <h3 class="section-title">About</h3>
+                    <div class="about-container">
+                        <div class="about-content">
+                            <p>This tool was developed by countervolts (._ayo)</p>
+                            <p>The source code can be found on <a href="https://github.com/countervolts/network-related-thing" target="_blank" class="about-link">GitHub</a>.</p>
+                            <p>Discord: ._ayo</p> <a href="https://discord.gg/wXMba3mw5B" target="_blank" class="about-link">Discord server</a></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="scannerView" class="view" style="display: none;">
             <div class="controls">
                 <h1 id="scanner" style="color: white;">Network Scanner</h1>
                 <div class="buttons">
@@ -145,6 +254,13 @@
                             <option value="registry" selected>Registry</option>
                             <option value="cmd">CMD</option>
                         </select>
+                    </div>
+                    <div class="setting-item">
+                        <label for="hardwareRngToggle" class="setting-label">
+                            <span>Hardware Level Randomization</span>
+                            <p class="setting-description">Uses your hardware to generate truly random strings that are used in the mac address, the this does nothing other than being truly random. Using this requires a Intel cpu from atleast 2012 and or a AMD cpu from 2015.</p>
+                        </label>
+                        <input type="checkbox" id="hardwareRngToggle" class="toggle">
                     </div>
                 </div>
                 <div class="section-title">Developer Settings</div>
@@ -266,9 +382,97 @@
                     <h3>Device Info</h3>
                     <div id="selectedDeviceInfo" class="selected-device-info"></div>
                 </div>
+            </div> 
+        </div>
+
+        <div id="updaterView" class="view" style="display: none;">
+            <h1>Update Manager</h1>
+            <div class="updater-container">
+                <div class="update-info">
+                    <div class="version-container">
+                        <div class="version-box">
+                            <div class="version-label">Current Version</div>
+                            <div id="currentVersion" class="version-number">Loading...</div>
+                        </div>
+                        <div class="version-box">
+                            <div class="version-label">Latest Version</div>
+                            <div id="latestVersion" class="version-number">Checking...</div>
+                        </div>
+                    </div>
+                    
+                    <div class="update-status-container">
+                        <div id="updateStatus" class="status checking">Checking for updates...</div>
+                    </div>
+                    
+                    <div class="update-actions">
+                        <button id="checkUpdateBtn" class="update-btn check-btn">Check for Updates</button>
+                        <button id="downloadUpdateBtn" class="update-btn download-btn" disabled>Download Update</button>
+                    </div>
+                    
+                    <div id="updateProgressContainer" class="progress-container" style="display: none;">
+                        <div class="progress-bar-container">
+                            <div id="updateProgressBar" class="progress-bar"></div>
+                        </div>
+                        <div id="updateProgressText" class="progress-text">Starting download...</div>
+                    </div>
+                </div>
+                
+                <div class="changelog-section">
+                    <h2>Changelog</h2>
+                    <div id="changelogContainer" class="changelog-container">
+                        <p>No changelog information available. Click "Check for Updates" to load the latest information.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="monitorView" class="view" style="display: none;">
+            <h1>Connection Monitor</h1>
+            <div class="monitor-container">
+                <div class="monitor-header">
+                    <div class="monitor-controls">
+                        <select id="adapterSelector" class="adapter-dropdown">
+                            <option value="all">All Adapters</option>
+                            <!-- Will be populated with available network adapters -->
+                        </select>
+                        <button id="refreshConnectionsBtn" class="monitor-btn">Refresh</button>
+                        <div class="auto-refresh">
+                            <input type="checkbox" id="autoRefreshToggle" class="toggle">
+                            <label for="autoRefreshToggle">Auto refresh</label>
+                        </div>
+                    </div>
+                    <div class="monitor-stats">
+                        <span id="connectionCount">0 connections</span>
+                        <span id="lastRefreshTime"></span>
+                    </div>
+                </div>
+                
+                <div class="connections-container">
+                    <div class="connections-header">
+                        <div class="connection-col process-col">Process</div>
+                        <div class="connection-col duration-col">Duration</div>
+                        <div class="connection-col dest-col">Destination</div>
+                        <div class="connection-col type-col">Type</div>
+                        <div class="connection-col actions-col">Actions</div>
+                    </div>
+                    <div id="connectionsBody" class="connections-body">
+                        <!-- Connection items will be added here dynamically -->
+                    </div>
+                </div>
+                
+                <div id="whoisPanel" class="whois-panel" style="display: none;">
+                    <div class="whois-header">
+                        <h3>WHOIS Information</h3>
+                        <button id="closeWhoisBtn" class="close-btn">×</button>
+                    </div>
+                    <div id="whoisContent" class="whois-content">
+                        <div class="loading-spinner"></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
-
+    
     <div id="confirmationModal" class="modal" style="display: none;">
         <div class="modal-content">
             <h2>Confirm Changes</h2>
@@ -282,7 +486,7 @@
     </div>
 
     <div id="notificationContainer" class="notification-container"></div>
-    <div class="version">v1.3</div>
+    <div class="version">v1.4</div>
 
     <script src="src/scanner/app.js"></script>
     <script src="src/settings/settings.js"></script>
@@ -291,41 +495,104 @@
     <script src="src/history/tracker.js"></script>
     <script src="src/visualizer/visualizer.js"></script>
     <script src="src/hotspot/hahaspot.js"></script>
+    <script src="src/home/home.js"></script>
+    <script src="src/updater/updating.js"></script>
+    <script src="src/monitor/monitoring.js"></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             function showViewFromHash() {
-                const hash = window.location.hash || '#scanner';
+                const hash = window.location.hash || '#home';
                 const views = {
+                    '#home': 'homeView',
                     '#scanner': 'scannerView',
                     '#bypass': 'bypassView',
                     '#history': 'historyView',
                     '#visualizer': 'visualizerView',
                     '#settings': 'settingsView',
                     '#misc': 'miscView',
-                    '#hotspot': 'hotspotView'
+                    '#hotspot': 'hotspotView',
+                    '#updater': 'updaterView',
+                    '#monitor': 'monitorView'
                 };
-        
+            
                 Object.values(views).forEach(viewId => {
                     document.getElementById(viewId).style.display = 'none';
                 });
                 const viewId = views[hash];
                 if (viewId) {
                     document.getElementById(viewId).style.display = 'block';
-                }
-        
-                const scannerView = document.getElementById('scannerView');
-                const resultsBody = document.getElementById('resultsBody');
-        
-                if (!scannerView || !resultsBody) {
-                    console.error('Initialization error: scannerView or resultsBody is missing from the DOM.');
-                } else {
-                    console.log('scannerView and resultsBody are properly initialized.');
+                    
+                    if (viewId === 'homeView') {
+                        if (window.loadStatistics) {
+                            window.loadStatistics();
+                        }
+                        if (window.loadSystemInfo) {
+                            window.loadSystemInfo();
+                        }
+                    }
                 }
             }
         
-            window.addEventListener('hashchange', showViewFromHash);
+            function updateActiveNavLink() {
+                const hash = window.location.hash || '#home';
+                
+                document.querySelectorAll('.nav-link').forEach(link => {
+                    link.classList.remove('active');
+                });
+                
+                const activeLink = document.querySelector(`a[href="${hash}"]`);
+                if (activeLink) {
+                    activeLink.classList.add('active');
+                }
+            }
+            
+            window.addEventListener('hashchange', () => {
+                showViewFromHash();
+                updateActiveNavLink();
+            });
+            
             showViewFromHash();
+            updateActiveNavLink();
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const dropdownHeaders = document.querySelectorAll('.dropdown-header');
+            
+            dropdownHeaders.forEach(header => {
+                header.addEventListener('click', () => {
+                    header.classList.toggle('active');
+                    
+                    const content = header.nextElementSibling;
+                    content.classList.toggle('show');
+                });
+            });
+            
+            function openActiveDropdown() {
+                const hash = window.location.hash || '#home';
+                
+                document.querySelectorAll('.nav-link').forEach(link => {
+                    link.classList.remove('active');
+                });
+                
+                const activeLink = document.querySelector(`a[href="${hash}"]`);
+                
+                if (activeLink) {
+                    activeLink.classList.add('active');
+                    
+                    const parentDropdown = activeLink.closest('.dropdown-content');
+                    if (parentDropdown) {
+                        parentDropdown.classList.add('show');
+                        const header = parentDropdown.previousElementSibling;
+                        if (header) {
+                            header.classList.add('active');
+                        }
+                    }
+                }
+            }
+            
+            openActiveDropdown();
+            window.addEventListener('hashchange', openActiveDropdown);
         });
     </script>
 </body>

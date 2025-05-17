@@ -1,0 +1,52 @@
+{
+  "name": "network-related-thing",
+  "version": "1.4.0",
+  "description": "Network utilities app",
+  "main": "main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "rebuild": "electron-rebuild"
+  },
+  "author": "countervolts",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.2.0",
+    "electron-builder": "^24.9.1",
+    "electron-rebuild": "^3.2.9"
+  },
+  "build": {
+    "appId": "com.countervolts.network-related-thing",
+    "productName": "Network Related Thing",
+    "files": [
+      "**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist",
+        "to": "app",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "../favicon.ico",
+      "requestedExecutionLevel": "requireAdministrator",
+      "asarUnpack": [
+        "app.manifest"
+      ]
+    },
+    "portable": {
+      "artifactName": "server-portable.exe"
+    }
+  },
+  "dependencies": {
+    "electron-is-dev": "^3.0.1",
+    "portfinder": "^1.0.37",
+    "tree-kill": "^1.2.2",
+    "wait-on": "^8.0.3"
+  }
+}

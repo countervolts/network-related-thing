@@ -37,12 +37,17 @@ document.getElementById('bypassTab').addEventListener('click', async () => {
                     </div>
                     
                     <div class="tooltip-item">
-                        <h4>IEEE Standard Method</h4>
-                        <p>Generates a random MAC address starting with 02, which follows IEEE standards for locally administered addresses. May have better compatibility with some networks.</p>
+                        <h4>Tmac Method</h4>
+                        <p>Generates a random MAC address starting with 02 (what Tmac does if you opt-in), May have better compatibility with some networks.</p>
+                    </div>
+                    
+                    <div class="tooltip-item">
+                        <h4>Randomized</h4>
+                        <p>Generates a properly formatted unicast Locally Administered Address using hardware-level randomization for improved security.</p>
                     </div>
                     
                     <div class="tooltip-warning">
-                        <strong>Note:</strong> Both methods work the same way to change your MAC address. The IEEE method is recommended as it follows proper standards and may have better network compatibility.
+                        <strong>Note:</strong> All methods work to change your MAC address, but with different formats and randomization techniques.
                     </div>
                 `;
                 
@@ -77,7 +82,8 @@ document.getElementById('bypassTab').addEventListener('click', async () => {
                             <label for="bypassMode-${adapter.transport}">MAC Change Mode:</label>
                             <select id="bypassMode-${adapter.transport}" class="bypass-mode-dropdown">
                                 <option value="standard">Standard Method (DE)</option>
-                                <option value="ieee">IEEE Standard Method (02)</option>
+                                <option value="Tmac">Tmac Method (02)</option>
+                                <option value="randomized">Randomized</option>
                             </select>
                         </div>
                     ` : ''}
@@ -104,13 +110,59 @@ document.getElementById('bypassTab').addEventListener('click', async () => {
 });
 
 function changeMac(transport) {
+    if (window.showNotification) {
+        window.showNotification('Starting MAC address bypass...', 'info');
+    }
+    
     const bypassMode = document.querySelector('.btn-bypass').textContent.includes('REGISTRY') ? 'registry' : 'cmd';
     const dropdown = document.getElementById(`bypassMode-${transport}`);
     const macMode = dropdown ? dropdown.value : 'standard';
     
+    fetch('/settings/get?key=hardware_rng')
+        .then(response => response.json())
+        .then(data => {
+            const useHardwareRng = data.value !== 'false'; // Default to true if not set
+            
+            let payload = { 
+                transport: transport,
+                mode: macMode,
+                hardware_rng: useHardwareRng
+            };
+            
+            if (window.settings && window.settings.debug_mode === 'full') {
+                console.log(`Using ${useHardwareRng ? 'hardware' : 'software'} randomization for MAC generation`);
+            }
+            
+            fetch('/bypass/change-mac', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) throw new Error(data.error);
+                showStatus(`${data.message}: ${data.new_mac} - ${data.note}`, 'success');
+                
+                if (window.updateHistorySizes) {
+                    window.updateHistorySizes();
+                }
+                document.dispatchEvent(new Event('historyUpdated'));
+            })
+            .catch(error => showStatus(error.message, 'error'));
+        })
+        .catch(error => {
+            console.error('Error loading hardware RNG setting:', error);
+            // Fall back to hardware RNG if we can't load the setting
+            changeMacWithSettings(transport, macMode, true);
+        });
+}
+
+// Helper function to perform the actual MAC change
+function changeMacWithSettings(transport, macMode, useHardwareRng) {
     let payload = { 
         transport: transport,
-        mode: macMode
+        mode: macMode,
+        hardware_rng: useHardwareRng
     };
     
     fetch('/bypass/change-mac', {
@@ -142,5 +194,10 @@ function showStatus(message, type) {
 if (window.updateHistorySizes) {
     window.updateHistorySizes();
 }
+
+if (window.loadStatistics) {
+    window.loadStatistics();
+}
+
 // Or dispatch an event
 document.dispatchEvent(new Event('historyUpdated'));

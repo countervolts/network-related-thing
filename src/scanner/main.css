@@ -77,7 +77,7 @@ header h1 {
     margin: 0;
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: 5px;
 }
 .nav-menu li {
     font-size: 1.1em;
@@ -123,6 +123,32 @@ header h1 {
 }
 .nav-menu a.active::before {
     background-color: #fff;
+}
+.nav-link {
+    text-decoration: none;
+    color: #e0e0e0;
+    padding: 12px 20px;
+    border-radius: 8px;
+    background-color: transparent;
+    transition: background-color 0.3s, color 0.3s, transform 0.2s, box-shadow 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    position: relative;
+}
+.nav-link:hover {
+    background-color: #444;
+    color: #fff;
+    transform: translateX(5px);
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+}
+.nav-link.active {
+    background-color: #007bff;
+    color: #fff;
+    box-shadow: 0 4px 8px rgba(0, 123, 255, 0.3);
+}
+.standalone {
+    margin-bottom: 25px;
 }
 .container {
     margin-left: 250px; 
@@ -315,4 +341,59 @@ header h1 {
     font-size: 0.9em;
     color: #e0e0e0;
     font-style: italic;
+}
+.nav-separator {
+    color: #888;
+    font-size: 0.9em;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 15px 15px 5px 15px;
+    border-top: 1px solid #333;
+    margin-top: 10px;
+}
+
+.nav-menu .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 18px; /* Increased gap for more separation between circle and text */
+    padding: 12px 20px;
+    text-decoration: none;
+    color: #fff;
+    border-radius: 8px;
+    background-color: transparent;
+    transition: background-color 0.3s, color 0.3s, transform 0.2s, box-shadow 0.2s;
+    position: relative;
+}
+
+.nav-menu .nav-link::before {
+    content: '';
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: #007bff;
+    transition: background-color 0.3s;
+}
+
+.nav-menu .nav-link:hover {
+    background-color: #333;
+    color: #fff;
+    transform: translateX(5px);
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.nav-menu .nav-link:hover::before {
+    background-color: #fff;
+}
+
+.nav-menu .nav-link.active {
+    background-color: #007bff;
+    color: #fff;
+    box-shadow: 0 4px 8px rgba(0, 123, 255, 0.3);
+    border-left: 3px solid #2196F3;
+}
+
+.nav-menu .nav-link.active::before {
+    background-color: #fff;
 }

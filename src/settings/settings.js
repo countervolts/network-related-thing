@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const cancelBtn = document.getElementById('cancelBtn');
     const changesList = document.getElementById('changesList');
     const preserveHotspotToggle = document.getElementById('preserveHotspotToggle');
+    const hardwareRngToggle = document.getElementById('hardwareRngToggle'); // Add reference to new toggle
 
     // Store original console methods
     const originalConsole = {
@@ -23,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Check if all elements are properly selected
     if (!hideWebsiteToggle || !autoOpenToggle || !debugModeDropdown || !bypassModeDropdown || 
         !runAsAdminToggle || !applySettingsBtn || !confirmationModal || 
-        !confirmBtn || !cancelBtn || !changesList || !preserveHotspotToggle) {
+        !confirmBtn || !cancelBtn || !changesList || !preserveHotspotToggle || !hardwareRngToggle) {
         console.error('One or more elements are missing in the DOM.');
         return;
     }
@@ -41,6 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
             bypassModeDropdown.value = settings.bypass_mode || 'registry';
             runAsAdminToggle.checked = settings.run_as_admin || false;
             preserveHotspotToggle.checked = settings.preserve_hotspot || false;
+            hardwareRngToggle.checked = settings.hardware_rng !== false; // Set hardware RNG toggle state
 
             applyDebugMode(settings.debug_mode);
         } catch (error) {
@@ -74,6 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
             bypass_mode: bypassModeDropdown.value,
             run_as_admin: runAsAdminToggle.checked,
             preserve_hotspot: preserveHotspotToggle.checked,
+            hardware_rng: hardwareRngToggle.checked, // Add hardware RNG toggle state
         };
     }
 

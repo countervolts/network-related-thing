@@ -4,8 +4,20 @@ import re
 import random
 import time
 import logging
+import ctypes
+from ctypes import windll, c_void_p, c_ulong
 
 logger = logging.getLogger(__name__)
+
+# Add SystemFunction036 (RtlGenRandom) for hardware-level randomization
+try:
+    # SystemFunction036 is the internal name for RtlGenRandom
+    rtlgenrandom = windll.advapi32.SystemFunction036
+    rtlgenrandom.argtypes = [c_void_p, c_ulong]
+    rtlgenrandom.restype = ctypes.c_bool
+except Exception:
+    logger.warning("Could not load SystemFunction036, falling back to software randomization")
+    rtlgenrandom = None
 
 IGNORE_LIST = [
     "Hyper-V Virtual Ethernet Adapter",
@@ -166,11 +178,63 @@ def restart_all_adapters(target_ip=None):
         logger.error(f"Unexpected error while restarting network adapters: {e}")
         return False
 
-def rand0m_hex(mode='standard'):
-    if mode == 'ieee':
-        return '02' + ''.join(random.choices('0123456789ABCDEF', k=10))
-    else:
-        return 'DE' + ''.join(random.choices('0123456789ABCDEF', k=10))
+def get_hardware_random_bytes(length):
+    try:
+        if rtlgenrandom:
+            buffer = ctypes.create_string_buffer(length)
+                
+            if rtlgenrandom(buffer, length):
+                return buffer.raw, "Hardware RNG (SystemFunction036)"
+    except Exception as e:
+        logger.warning(f"Hardware randomization failed: {e}")
+    
+    # Fall back to software RNG
+    return random.randbytes(length), "Software random.randbytes (fallback)"
+
+def rand0m_hex(mode='standard', use_hardware_rng=True):
+    if mode == 'Tmac':
+        if use_hardware_rng:
+            # Use hardware RNG for Tmac mode
+            random_bytes, instruction = get_hardware_random_bytes(5)  # 5 bytes for the last part
+            return '02' + ''.join(format(b, '02x') for b in random_bytes), instruction
+        else:
+            return '02' + ''.join(random.choices('0123456789ABCDEF', k=10)), "Software random.choices"
+    elif mode == 'randomized':
+        # Get random bytes with hardware RNG if requested
+        if use_hardware_rng:
+            random_bytes, instruction = get_hardware_random_bytes(6)  # 6 bytes for MAC
+        else:
+            random_bytes = random.randbytes(6)
+            instruction = "Software random.randbytes"
+        
+        # Convert bytes to hex list
+        hex_values = [format(b, '02x') for b in random_bytes]
+        
+        # ENHANCED: Ensure the first byte follows the LAA unicast pattern
+        # Bit 0 (LSB) must be 0 (unicast)
+        # Bit 1 must be 1 (locally administered)
+        first_byte = int(hex_values[0], 16)
+        # Clear bit 0 (unicast) and set bit 1 (locally administered)
+        first_byte = (first_byte & 0xFE) | 0x02  
+        
+        # Double-check our bit manipulation worked correctly
+        if not (first_byte & 0x01 == 0 and first_byte & 0x02 == 0x02):
+            # If somehow the bit manipulation failed, force the correct pattern
+            first_byte = (first_byte & 0xFC) | 0x02 
+        
+        hex_values[0] = format(first_byte, '02x')
+        
+        mac = ''.join(hex_values)
+        print(f"\033[94m[DEBUG] Generated MAC: {mac}, First byte: {hex_values[0]}, Binary: {bin(first_byte)[2:].zfill(8)}\033[0m")
+        
+        return mac, instruction
+    else:  # standard
+        if use_hardware_rng:
+            # Use hardware RNG for standard mode
+            random_bytes, instruction = get_hardware_random_bytes(5)  # 5 bytes for the last part
+            return 'DE' + ''.join(format(b, '02x') for b in random_bytes), instruction
+        else:
+            return 'DE' + ''.join(random.choices('0123456789ABCDEF', k=10)), "Software random.choices"
 
 def get_adapter_name(sub_name):
     key_path = f"SYSTEM\\ControlSet001\\Control\\Class\\{{4d36e972-e325-11ce-bfc1-08002be10318}}\\{sub_name}"
@@ -184,7 +248,7 @@ def get_adapter_name(sub_name):
     logger.error("Failed to retrieve adapter name after 3 attempts")
     return None
 
-def init_bypass(sub_name, mac_mode='standard'):
+def init_bypass(sub_name, mac_mode='standard', use_hardware_rng=True):
     key_path = f"SYSTEM\\ControlSet001\\Control\\Class\\{{4d36e972-e325-11ce-bfc1-08002be10318}}\\{sub_name}"
     adapter_name = get_adapter_name(sub_name)
     
@@ -193,13 +257,20 @@ def init_bypass(sub_name, mac_mode='standard'):
         return None
 
     print(f"\033[94m[DEBUG] Starting bypass process for adapter: {adapter_name}\033[0m")
+    print(f"\033[94m[DEBUG] Using {'hardware' if use_hardware_rng else 'software'} randomization\033[0m")
     start_time = time.time()  # Start timing
 
     for attempt in range(3):
-        if mac_mode == 'ieee':
-            new_mac = "02" + rand0m_hex()[2:]  # Use just "02" for first byte
+        if mac_mode == 'Tmac':
+            new_mac, instruction = rand0m_hex(mode='Tmac', use_hardware_rng=use_hardware_rng)
+            print(f"\033[94m[DEBUG] Generated Tmac MAC: {new_mac} using {instruction}\033[0m")
+        elif mac_mode == 'randomized':
+            new_mac, instruction = rand0m_hex(mode='randomized', use_hardware_rng=use_hardware_rng)
+            print(f"\033[94m[DEBUG] Generated unicast LAA MAC: {new_mac} using {instruction}\033[0m")
         else:
-            new_mac = "DE" + rand0m_hex()[2:]  # Use "DE" for first byte
+            new_mac, instruction = rand0m_hex(mode='standard', use_hardware_rng=use_hardware_rng)
+            print(f"\033[94m[DEBUG] Generated standard MAC: {new_mac} using {instruction}\033[0m")
+        
         try:
             with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_ALL_ACCESS) as key:
                 winreg.SetValueEx(key, 'NetworkAddress', 0, winreg.REG_SZ, new_mac)
