@@ -4,595 +4,1159 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>network related things</title>
-    <link rel="stylesheet" href="src/scanner/main.css">
-    <link rel="stylesheet" href="src/settings/styles.css">
-    <link rel="stylesheet" href="src/misc/styles.css">
-    <link rel="stylesheet" href="src/bypass/styles.css">
-    <link rel="stylesheet" href="src/history/styles.css">
-    <link rel="stylesheet" href="src/visualizer/styles.css">
-    <link rel="stylesheet" href="src/hotspot/styles.css">
-    <link rel="stylesheet" href="src/home/styles.css">
-    <link rel="stylesheet" href="src/updater/styles.css">
-    <link rel="stylesheet" href="src/monitor/styles.css">
+    <link rel="stylesheet" href="src/styles.css">
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+
+            function getLuminance(hex) {
+                if (!hex) return 0;
+                hex = hex.replace('#', '');
+                if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+                const r = parseInt(hex.substring(0, 2), 16);
+                const g = parseInt(hex.substring(2, 4), 16);
+                const b = parseInt(hex.substring(4, 6), 16);
+                return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+            }
+
+            const TABS_TO_TOGGLE = ['scannerTab', 'monitorTab', 'autoTab', 'historyTab', 'updaterTab'];
+            try {
+                const savedUiSettings = JSON.parse(localStorage.getItem('uiCustomization'));
+                if (savedUiSettings) {
+                    if (savedUiSettings.navVisibility) {
+                        const style = document.createElement('style');
+                        let css = '';
+                        TABS_TO_TOGGLE.forEach(tabId => {
+                            if (savedUiSettings.navVisibility[tabId] === false) {
+                                css += `#${tabId} { display: none; }`;
+                            }
+                        });
+                        style.textContent = css;
+                        document.head.appendChild(style);
+                    }
+                    if (savedUiSettings.accentColor) {
+                        const root = document.documentElement;
+                        root.style.setProperty('--accent', savedUiSettings.accentColor);
+                        if (getLuminance(savedUiSettings.accentColor) > 0.5) {
+                            root.classList.add('accent-is-light');
+                        } else {
+                            root.classList.remove('accent-is-light');
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to apply UI customizations early:', e);
+            }
+
+            try {
+                const savedSettings = JSON.parse(localStorage.getItem('settings'));
+                if (!savedSettings || savedSettings.beta_features !== true) {
+                    const style = document.createElement('style');
+                    style.textContent = `#autoTabWrapper { display: none; }`;
+                    document.head.appendChild(style);
+                }
+            } catch (e) {
+                console.error('Failed to apply beta features visibility early:', e);
+            }
+
+            window.addEventListener('DOMContentLoaded', () => {
+                window.scrollTo(0, 0);
+            });
+        })();
+    </script>
 </head>
 <body>
-    <div class="nav-container">
-        <nav class="nav-menu">
-            <a href="#home" id="homeTab" class="nav-link">Home <span style="font-size: 0.7em; color: #999; font-weight: normal;">(new!)</span></a>
-            
-            <div class="nav-separator">Network Tools</div>
-            <a href="#bypass" id="bypassTab" class="nav-link">Bypass</a>
-            <a href="#hotspot" id="hotspotTab" class="nav-link">Hotspot</a>
-            
-            <div class="nav-separator">Analysis</div>
-            <a href="#scanner" id="scannerTab" class="nav-link">Scanner</a>
-            <a href="#monitor" id="monitorTab" class="nav-link">Monitor <span style="font-size: 0.7em; color: #999; font-weight: normal;">(new!)</span></a>
-            <a href="#visualizer" id="visualizerTab" class="nav-link">Visualizer</a>
-            
-            <div class="nav-separator">System</div>
-            <a href="#history" id="historyTab" class="nav-link">History</a>
-            <a href="#updater" id="updaterTab" class="nav-link">Updater <span style="font-size: 0.7em; color: #999; font-weight: normal;">(new!)</span></a>
-            <a href="#misc" id="miscTab" class="nav-link">Misc</a>
-            <a href="#settings" id="settingsTab" class="nav-link">Settings</a>
-        </nav>
-    </div>
+    <header class="main-header">
+        <div class="pill-nav-container">
+            <nav class="pill-nav">
+                <div class="glider"></div>
+                <div class="nav-item-wrapper"><a href="#home" id="homeTab" class="nav-link active">Home</a></div>
+                <div class="nav-item-wrapper" id="nav-sep-1-wrapper"><div id="nav-sep-1" class="nav-separator"></div></div>
+                <div class="nav-item-wrapper"><a href="#bypass" id="bypassTab" class="nav-link">Bypass</a></div>
+                <div class="nav-item-wrapper"><a href="#scanner" id="scannerTab" class="nav-link">Scanner</a></div>
+                <div class="nav-item-wrapper"><a href="#monitor" id="monitorTab" class="nav-link">Monitor</a></div>
+                <div class="nav-item-wrapper" id="autoTabWrapper"><a href="#auto" id="autoTab" class="nav-link">Auto</a></div>
+                <div class="nav-item-wrapper" id="nav-sep-2-wrapper"><div id="nav-sep-2" class="nav-separator"></div></div>
+                <div class="nav-item-wrapper"><a href="#history" id="historyTab" class="nav-link">History</a></div>
+                <div class="nav-item-wrapper"><a href="#updater" id="updaterTab" class="nav-link">Updater</a></div>
+                <div class="nav-item-wrapper"><div id="nav-sep-3" class="nav-separator"></div></div>
+                <div class="nav-item-wrapper"><div id="nav-clock" class="nav-clock"></div></div>
+            </nav>
+        </div>
+    </header>
 
-    <div class="container">
+    <script>
+        // run the clock immediately so the nav doesn't jump around on load
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+
+            let use24HourClock = false;
+            try {
+                const settings = JSON.parse(localStorage.getItem('uiCustomization'));
+                if (settings && typeof settings.use24HourClock === 'boolean') {
+                    use24HourClock = settings.use24HourClock;
+                }
+            } catch (e) { /* use default */ }
+
+            const clockElement = document.getElementById('nav-clock');
+
+            function updateClock() {
+                const now = new Date();
+                const options = {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: !use24HourClock
+                };
+                clockElement.textContent = now.toLocaleTimeString('en-US', options);
+            }
+
+            document.addEventListener('clockFormatChanged', (e) => {
+                use24HourClock = e.detail.use24HourClock;
+                updateClock();
+            });
+            
+            updateClock();
+            setInterval(updateClock, 1000);
+        })();
+    </script>
+
+    <button id="navToggleBtn" class="nav-toggle-btn" aria-label="Toggle Navigation">
+        <span class="arrow">^</span>
+    </button>
+
+    <main class="container">
         <div id="homeView" class="view" style="display: block;">
-            <h1>Welcome</h1>
-            <div class="home-container">
-                <div class="welcome-message">
-                    <h2>Network related thing</h2>
-                    <p>Bypass v3 with some extra networking related things (hence the name)</p>
-                </div>
-    
-                <div class="home-section">
-                    <h3 class="section-title">Your Activity</h3>
-                    <div class="stats-grid">
-                        <div class="stat-item">
-                            <div class="stat-icon bypass-icon"></div>
-                            <div class="stat-info">
-                                <span class="stat-count" id="bypassCount">0</span>
-                                <span class="stat-label">Bypasses</span>
-                            </div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-icon basic-scan-icon"></div>
-                            <div class="stat-info">
-                                <span class="stat-count" id="basicScanCount">0</span>
-                                <span class="stat-label">Basic Scans</span>
-                            </div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-icon full-scan-icon"></div>
-                            <div class="stat-info">
-                                <span class="stat-count" id="fullScanCount">0</span>
-                                <span class="stat-label">Full Scans</span>
-                            </div>
-                        </div>
+            <div class="home-layout">
+                <!-- main content area, holds the stats and faq -->
+                <div class="home-main">
+                    <div class="home-header">
+                        <h1>Welcome Back</h1>
+                        <p>Bypass v3 with some extra networking related things (hence the name)</p>
                     </div>
-                </div>                               
-    
-                
-                <div class="home-section">
-                    <h3 class="section-title">About You</h3>
-                    <div class="about-container">
-                        <div class="about-content system-info">
-                            <div class="info-columns">    
-                                <div class="info-column">
-                                    <h4>Network</h4>
-                                    <p><strong>Internal IP:</strong> <span id="internalIp">Loading...</span></p>
-                                    <p><strong>External IP:</strong> <span id="externalIp" class="blurred-text">Loading...</span></p>
-                                    <p><strong>MAC Address:</strong> <span id="macAddress" class="blurred-text">Loading...</span></p>
-                                    <p><strong>ISP:</strong> <span id="ispName" class="blurred-text">Loading...</span></p>
+
+                    <div class="home-section">
+                        <h3 class="section-title">Your Activity</h3>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <div class="stat-icon bypass-icon"></div>
+                                <div class="stat-info">
+                                    <span class="stat-count" id="bypassCount">0</span>
+                                    <span class="stat-label">Bypasses</span>
                                 </div>
-                                <div class="info-column">
-                                    <h4>Hardware</h4>
-                                    <p><strong>CPU:</strong> <span id="cpuInfo">Loading...</span></p>
-                                    <p><strong>GPU:</strong> <span id="gpuInfo">Loading...</span></p>
-                                    <p><strong>Memory:</strong> <span id="memoryInfo">Loading...</span></p>
-                                    <p><strong>Storage:</strong> <span id="storageInfo">Loading...</span></p>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-icon basic-scan-icon"></div>
+                                <div class="stat-info">
+                                    <span class="stat-count" id="basicScanCount">0</span>
+                                    <span class="stat-label">Basic Scans</span>
+                                </div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-icon full-scan-icon"></div>
+                                <div class="stat-info">
+                                    <span class="stat-count" id="fullScanCount">0</span>
+                                    <span class="stat-label">Full Scans</span>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
-                <div class="home-section">
-                    <h3 class="section-title">Curious?</h3>
-                    <div class="faq-container">
-                        <div class="faq-item">
-                            <div class="faq-question">Is it possible to bypass without sending a notification?</div>
-                            <div class="faq-answer">No. Most network control software uses a heartbeat or real-time traffic monitoring system to detect new devices. These systems usually work directly with the router to track activity as it happens.</div>                            
-                        </div>
-                        <div class="faq-item">
-                            <div class="faq-question">Will there ever be a way to mask or hide devices?</div>
-                            <div class="faq-answer">Not reliably. Network management tools detect devices either through active heartbeat checks or by passively watching for any traffic. If your device sends or receives any data, it will show up in the tool.</div>                            
-                        </div>
-                        <div class="faq-item">
-                            <div class="faq-question">Could you just write some code that will unpause a device?</div>
-                            <div class="faq-answer">No... That just isnt possible. When a device is paused, the router is told to block all incoming and outgoing traffic based on that device's mac or IP. No code running on the device can bypass that block if the router is enforcing it correctly.</div>       
-                        </div>
-                        <div class="faq-item">
-                            <div class="faq-question">How does blocking or pausing a device actually work?</div>
-                            <div class="faq-answer">Most network control systems block devices at Layer 2 using the mac address or at Layer 3 using the IP address. If blocked at Layer 2, the router will drop all traffic to and from the device based on its mac. If blocked at Layer 3, the router may refuse to give the device an IP address or block traffic from its current one. In both cases, traffic is silently dropped and the device cannot access the network.</div>
-                        </div>
-                        <div class="faq-item">
-                            <div class="faq-question">How do you change your mac address on a phone?</div>
-                            <div class="faq-answer">The only reliable way to force a new mac address on iOS is by doing a full network settings reset (or by changing your 'Private Wi-Fi Address' from on to off as long that mac isnt paused/blocked). idk how to on android. You could also just hotspot from your computer to your device and youll have internet.</div>
-                        </div>
-                        <div class="faq-item">
-                            <div class="faq-question">Why does changing my mac address give me internet?</div>
-                            <div class="faq-answer">When you change your mac address and your router is using layer 2 based network blocking/pausing, a new mac address will make you appear as a completely new device. While if your network uses layer 3 blocking (since this is ip based) this bypassing method wont work</div>
+
+                    <div class="home-section">
+                        <h3 class="section-title">Curious?</h3>
+                        <div class="faq-container">
+                            <div class="faq-item">
+                                <div class="faq-question">Is it possible to bypass without sending a notification?</div>
+                                <div class="faq-answer">No. Most network control software uses a heartbeat or real-time traffic monitoring system to detect new devices. These systems usually work directly with the router to track activity as it happens.</div>                            
+                            </div>
+                            <div class="faq-item">
+                                <div class="faq-question">Will there ever be a way to mask or hide devices?</div>
+                                <div class="faq-answer">Not reliably. Network management tools detect devices either through active heartbeat checks or by passively watching for any traffic. If your device sends or receives any data, it will show up in the tool.</div>                            
+                            </div>
+                            <div class="faq-item">
+                                <div class="faq-question">Could you just write some code that will unpause a device?</div>
+                                <div class="faq-answer">No... That just isnt possible. When a device is paused, the router is told to block all incoming and outgoing traffic based on that device's mac or IP. No code running on the device can bypass that block if the router is enforcing it correctly.</div>       
+                            </div>
+                            <div class="faq-item">
+                                <div class="faq-question">How does blocking or pausing a device actually work?</div>
+                                <div class="faq-answer">Most network control systems block devices at Layer 2 using the mac address or at Layer 3 using the IP address. If blocked at Layer 2, the router will drop all traffic to and from the device based on its mac. If blocked at Layer 3, the router may refuse to give the device an IP address or block traffic from its current one. In both cases, traffic is silently dropped and the device cannot access the network.</div>
+                            </div>
+                            <div class="faq-item">
+                                <div class="faq-question">How do you change your mac address on a phone?</div>
+                                <div class="faq-answer">The only reliable way to force a new mac address on iOS is by doing a full network settings reset (or by changing your 'Private Wi-Fi Address' from on to off as long that mac isnt paused/blocked). idk how to on android. You could also just hotspot from your computer to your device and youll have internet.</div>
+                            </div>
+                            <div class="faq-item">
+                                <div class="faq-question">Why does changing my mac address give me internet?</div>
+                                <div class="faq-answer">When you change your mac address and your router is using layer 2 based network blocking/pausing, a new mac address will make you appear as a completely new device. While if your network uses layer 3 blocking (since this is ip based) this bypassing method wont work</div>
+                            </div>
                         </div>
                     </div>
-                </div>  
-                <div class="home-section">
-                    <h3 class="section-title">About</h3>
-                    <div class="about-container">
-                        <div class="about-content">
-                            <p>This tool was developed by countervolts (._ayo)</p>
-                            <p>The source code can be found on <a href="https://github.com/countervolts/network-related-thing" target="_blank" class="about-link">GitHub</a>.</p>
-                            <p>Discord: ._ayo</p> <a href="https://discord.gg/wXMba3mw5B" target="_blank" class="about-link">Discord server</a></p>
+                </div>
+
+                <!-- sidebar for user/system info and about section -->
+                <div class="home-sidebar">
+                    <div class="home-section">
+                        <h3 class="section-title">About You</h3>
+                        <div class="system-info">
+                            <div class="info-column">
+                                <h4>Network</h4>
+                                <p><strong>Internal IP:</strong> <span id="internalIp">Loading...</span></p>
+                                <p><strong>External IP:</strong> <span id="externalIp" class="blurred-text">Loading...</span></p>
+                                <p><strong>MAC Address:</strong> <span id="macAddress" class="blurred-text">Loading...</span></p>
+                                <p><strong>ISP:</strong> <span id="ispName" class="blurred-text">Loading...</span></p>
+                            </div>
+                            <div class="info-column">
+                                <h4>Hardware</h4>
+                                <p><strong>CPU:</strong> <span id="cpuInfo">Loading...</span></p>
+                                <p><strong>GPU:</strong> <span id="gpuInfo">Loading...</span></p>
+                                <p><strong>Memory:</strong> <span id="memoryInfo">Loading...</span></p>
+                                <p><strong>Storage:</strong> <span id="storageInfo">Loading...</span></p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="home-section">
+                        <h3 class="section-title">About</h3>
+                        <div class="about-container">
+                            <div class="about-content">
+                                <p>This tool was developed by countervolts (._ayo)</p>
+                                <p>The source code can be found on <a href="https://github.com/countervolts/network-related-thing" target="_blank" class="about-link">GitHub</a>.</p>
+                                <p>Discord: ._ayo</p> <a href="https://discord.gg/wXMba3mw5B" target="_blank" class="about-link">Discord server</a></p>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
         <div id="scannerView" class="view" style="display: none;">
-            <div class="controls">
-                <h1 id="scanner" style="color: white;">Network Scanner</h1>
-                <div class="buttons">
-                    <button id="basicScanBtn" class="scan-btn">Basic Scan</button>
-                    <button id="fullScanBtn" class="scan-btn">Full Scan</button>
-                    <button id="disableBtn" class="scan-btn" disabled>Disable</button>
-                    <button id="enableBtn" class="scan-btn" disabled>Enable</button>
-                </div>
-                <span id="lastScanTimestamp" class="timestamp">- Previous scan: Not yet performed</span>
-            </div>
-            <div class="results-and-disabled">
-                <div id="resultsContainer" class="results-container">
-                    <div class="results-header">
-                        <div>IP Address</div>
-                        <div>MAC Address</div>
-                        <div>Hostname</div>
-                        <div>Vendor</div>
+            <div class="scanner-header">
+                <h1>Network Scanner</h1>
+                <p>Discover devices on your network.</p>
+                <div class="scan-controls">
+                    <div class="scan-buttons">
+                        <button id="basicScanBtn" class="scan-btn">Basic Scan</button>
+                        <button id="fullScanBtn" class="scan-btn">Full Scan</button>
                     </div>
-                    <div id="resultsBody" class="results-body"></div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div id="lastScanTimestamp" class="timestamp"></div>
+                        <div class="inline-info-icon" id="scannerTabInfo">?</div>
+                    </div>
                 </div>
-                <div class="disabled-devices">
-                    <h3>Disabled Devices</h3>
-                    <div id="disabledDevices" class="device-box"></div>
+            </div>
+            <div class="scanner-layout">
+                <div class="scanner-main-content">
+                    <div id="userDeviceSection" class="device-list-section">
+                        <h3>Your Devices</h3>
+                        <div id="userDeviceList" class="device-list"></div>
+                    </div>
+                    <div id="resultsContainer" class="device-list-section">
+                        <div class="section-header">
+                            <h3>Discovered Devices</h3>
+                            <div class="search-container">
+                                <span class="search-icon">🔍</span>
+                                <input type="text" id="deviceSearchInput" class="search-input" placeholder="Filter by IP or MAC...">
+                            </div>
+                        </div>
+                        <div id="resultsBody" class="device-list">
+                            <div class="no-results">Run a scan to discover devices.</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="scanner-sidebar">
+                    <div id="deviceDetailsPanel" class="device-details-panel">
+                        <h3>Device Details</h3>
+                        <div id="deviceDetailsContent">
+                            <p class="details-prompt">Select a device to see details.</p>
+                        </div>
+                    </div>
+                    <div id="disabledDevicesPanel" class="device-list-section">
+                        <h3>Disabled Devices</h3>
+                        <div id="disabledDevices" class="device-list">
+                             <div class="no-results">No devices are disabled.</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
         
         <div id="bypassView" class="view" style="display: none;">
-            <h1 id="bypass">MAC Address Bypass</h1>
-            <div class="bypass-section">
-                <h2>Select Network Adapter</h2>
-                <div id="adapterList" class="adapter-list"></div>
-                <div id="statusMessage" class="status-message" style="display: none;"></div>
+            <div class="scanner-header">
+                <h1>MAC Address Bypass</h1>
+                <p>Bypass network restrictions by changing your mac address.</p>
+                <div class="scan-controls">
+                    <div class="control-group">
+                        <label for="showIgnoreListToggle" class="toggle-label">Show Ignored Adapters</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="showIgnoreListToggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="inline-info-icon" id="bypassTabInfo">?</div>
+                </div>
             </div>
+            <div id="adapterList" class="adapter-grid">
+                <!-- adapter list gets populated by js -->
+            </div>
+            <div id="statusMessage" class="status-message" style="display: none;"></div>
         </div>
 
         
         <div id="historyView" class="view" style="display: none;">
             <h1>History</h1>
-            <div class="history-container">
-                <div class="scan-history">
-                    <h2>Scan History</h2>
-                    <div id="scanHistoryList" class="history-list"></div>
-                </div>
-                <div class="bypass-history">
-                    <h2>Bypass History</h2>
-                    <div id="bypassHistoryList" class="history-list"></div>
-                </div>
+            
+            <div class="history-nav">
+                <button class="history-nav-btn active" data-history-type="bypass">Bypass History</button>
+                <button class="history-nav-btn" data-history-type="scan">Scan History</button>
             </div>
-        </div>
 
-        
-        <div id="visualizerView" class="view" style="display: none;">
-            <h1>Network Visualizer</h1>
-            <div class="visualizer-container">
-                <div id="networkGraph" class="network-graph"></div>
-                <div id="deviceDetails" class="device-details">
-                    <h3>Device Details</h3>
-                    <div id="deviceDetailsContent">
-                        <p class="details-prompt">Click on a device to view details</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        
-        <div id="settingsView" class="view" style="display: none;">
-            <h1>Settings</h1>
-            <div class="settings-section">
-                <div class="section-title">General</div>
-                <div class="settings-grid">
-                    <div class="setting-item">
-                        <label for="hideWebsiteToggle" class="setting-label">
-                            <span>Hide Website</span>
-                            <p class="setting-description">If enabled, only the creator can access the website. Unauthorized users will be redirected.</p>
-                        </label>
-                        <input type="checkbox" id="hideWebsiteToggle" class="toggle">
-                    </div>
-                    <div class="setting-item">
-                        <label for="autoOpenToggle" class="setting-label">
-                            <span>Auto Open Page</span>
-                            <p class="setting-description">If enabled, the website will automatically open in your browser when the server starts.</p>
-                        </label>
-                        <input type="checkbox" id="autoOpenToggle" class="toggle">
-                    </div>
-                    <div class="setting-item">
-                        <label for="runAsAdminToggle" class="setting-label">
-                            <span>Run as Admin</span>
-                            <p class="setting-description">If enabled, the application will run with administrative privileges whenever it is started.</p>
-                        </label>
-                        <input type="checkbox" id="runAsAdminToggle" class="toggle">
-                    </div>
-                    <div class="setting-item">
-                        <label for="preserveHotspotToggle" class="setting-label">
-                            <span>Preserve Hotspot</span>
-                            <p class="setting-description">If enabled, your hotspot will remain running when the program stops. If disabled, the hotspot will be stopped during shutdown.</p>
-                        </label>
-                        <input type="checkbox" id="preserveHotspotToggle" class="toggle">
-                    </div>
-                </div>
-                <div class="section-title">Bypass</div>
-                <div class="settings-grid">
-                    <div class="setting-item">
-                        <label for="bypassModeDropdown" class="setting-label">
-                            <div class="setting-header">
-                                <span>Bypass Mode</span>
-                                <div class="inline-info-icon" id="bypassModeInfo">?</div>
-                            </div>
-                            <p class="setting-description">Select the method to use for bypassing (commands or Registry).</p>
-                        </label>
-                        <select id="bypassModeDropdown" class="dropdown">
-                            <option value="registry" selected>Registry</option>
-                            <option value="cmd">CMD</option>
+            <div id="bypassHistoryPanel" class="history-panel active">
+                <div class="history-controls">
+                    <div class="control-group">
+                        <label for="bypassModeFilter">Mode:</label>
+                        <select id="bypassModeFilter" class="dropdown">
+                            <option value="all">All Modes</option>
                         </select>
                     </div>
-                    <div class="setting-item">
-                        <label for="hardwareRngToggle" class="setting-label">
-                            <span>Hardware Level Randomization</span>
-                            <p class="setting-description">Uses your hardware to generate truly random strings that are used in the mac address, the this does nothing other than being truly random. Using this requires a Intel cpu from atleast 2012 and or a AMD cpu from 2015.</p>
-                        </label>
-                        <input type="checkbox" id="hardwareRngToggle" class="toggle">
+                    <div class="control-group">
+                        <label for="bypassMethodFilter">Method:</label>
+                        <select id="bypassMethodFilter" class="dropdown">
+                            <option value="all">All Methods</option>
+                        </select>
                     </div>
-                </div>
-                <div class="section-title">Developer Settings</div>
-                <div class="settings-grid">
-                    <div class="setting-item">
-                        <label for="debugModeDropdown" class="setting-label">
-                            <span>Debug Mode</span>
-                            <p class="setting-description">Select the level of debug information to display in the server logs (No restart required).</p>
-                        </label>
-                        <select id="debugModeDropdown" class="dropdown">
-                            <option value="off">Off</option>
-                            <option value="basic">Basic</option>
-                            <option value="full">Full</option>
+                    <div class="control-group">
+                        <label for="bypassSort">Sort by:</label>
+                        <select id="bypassSort" class="dropdown">
+                            <option value="newest">Newest First</option>
+                            <option value="oldest">Oldest First</option>
                         </select>
                     </div>
                 </div>
-                <button id="applySettingsBtn" class="apply-btn">Apply Changes</button>
+                <div id="bypassHistoryList" class="history-list-redesigned"></div>
+            </div>
+
+            <div id="scanHistoryPanel" class="history-panel">
+                 <div class="history-controls">
+                    <div class="control-group">
+                        <label for="scanSort">Sort by:</label>
+                        <select id="scanSort" class="dropdown">
+                            <option value="newest">Newest First</option>
+                            <option value="oldest">Oldest First</option>
+                        </select>
+                    </div>
+                    <button id="deleteSelectedScansBtn" class="btn btn-danger" disabled>Delete Selected</button>
+                </div>
+                <div id="scanHistoryList" class="history-list-redesigned"></div>
             </div>
         </div>
 
-        
-        <div id="miscView" class="view" style="display: none;">
-            <h1>Miscellaneous</h1>
-            <div id="miscContent">
-                <div class="misc-section">
-                    <h3 class="section-title">System Maintenance</h3>
-                    <div class="misc-grid">
-                        <div class="setting-item compact">
-                            <label class="setting-label">
-                                <span>Clear Console</span>
-                                <p class="setting-description">Clears the console output to improve readability.</p>
-                            </label>
-                            <button id="clearConsoleBtn" class="apply-btn">Clear Console</button>
-                        </div>
-                        
-                        <div class="setting-item compact">
-                            <label class="setting-label">
-                                <span>Network Adapters</span>
-                                <p class="setting-description">Restart network adapters to resolve connection issues.</p>
-                            </label>
-                            <button id="restartAdaptersBtn" class="apply-btn">Restart Network Adapters</button>
-                        </div>
+        <div id="revertMacModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <h2>Confirm Revert</h2>
+                <p>Are you sure you want to revert the MAC address for this adapter?</p>
+                <div class="revert-info">
+                    <div class="revert-mac-box old-mac">
+                        <span class="revert-label">Current MAC</span>
+                        <span id="revertCurrentMac" class="revert-mac"></span>
+                    </div>
+                    <span class="revert-arrow">→</span>
+                    <div class="revert-mac-box new-mac">
+                        <span class="revert-label">Revert to</span>
+                        <span id="revertToMac" class="revert-mac"></span>
                     </div>
                 </div>
-                <div class="misc-section">
-                    <h3 class="section-title">Data Management</h3>
-                    <div class="setting-item">
-                        <label class="setting-label">
-                            <span>Clear Local Storage</span>
-                            <p class="setting-description">Clears all data stored in the browser's local storage. (Whatever is shown in scanner/visualizer currently will be removed)</p>
-                        </label>
-                        <button id="clearLocalStorageBtn" class="apply-btn">Clear Local Storage</button>
-                    </div>
-                    <div class="setting-item">
-                        <label class="setting-label">
-                            <span>Clear History</span>
-                            <p class="setting-description">Select the type of history to clear. (All history can be viewed if you click "Open Storage Folder")</p>
-                        </label>
-                        <div class="control-row">
-                            <select id="clearHistoryDropdown" class="dropdown1">
-                                <option value="scan">Scan History</option>
-                                <option value="bypass">Bypass History</option>
-                                <option value="all">All History</option>
-                            </select>
-                            <div class="button-group">
-                                <button id="clearHistoryBtn" class="apply-btn">Clear Selected History</button>
-                                <button id="openHistoryFolderBtn" class="apply-btn">Open Storage Folder</button>
+                <div class="modal-actions">
+                    <button id="confirmRevertBtn" class="btn btn-revert">Revert</button>
+                    <button id="cancelRevertBtn" class="btn btn-secondary">Cancel</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="settings-panel" class="settings-panel-overlay" style="display: none;">
+            <div class="settings-panel-content">
+                <button id="closeSettingsPanelBtn" class="close-btn">×</button>
+                <div class="settings-panel-layout">
+                    <nav class="settings-panel-nav">
+                        <div class="settings-search-container">
+                            <span class="search-icon">🔍</span>
+                            <input type="text" id="settingsSearchInput" class="search-input" placeholder="Search settings...">
+                        </div>
+                        <a href="#settings-section-misc" class="settings-nav-link active">Miscellaneous</a>
+                        <a href="#settings-section-customization" class="settings-nav-link">Customization</a>
+                        <a href="#settings-section-networking" class="settings-nav-link">Networking</a>
+                        <a href="#settings-section-general" class="settings-nav-link">Settings</a>
+                        <button id="applySettingsBtn" class="apply-btn">Apply Changes</button>
+                    </nav>
+                    <main id="settings-panel-main" class="settings-panel-main">
+                        <div id="settings-section-misc" class="settings-section-content">
+                            <h2 class="settings-main-title">Miscellaneous</h2>
+                            <div class="section-title">System Maintenance</div>
+                            <div class="settings-grid single-column">
+                                <div class="setting-item" data-search-term="clear console output">
+                                    <div class="setting-content">
+                                            <span class="setting-label">Clear Console</span>
+                                            <p class="setting-description">Clears the console output to improve readability.</p>
+                                        </div>
+                                        <button id="clearConsoleBtn" class="setting-action-btn">Clear</button>
+                                    </div>
+                                    <div class="setting-item" data-search-term="restart network adapters connection issues">
+                                        <div class="setting-content">
+                                            <span class="setting-label">Network Adapters</span>
+                                            <p class="setting-description">Restart network adapters to resolve connection issues.</p>
+                                        </div>
+                                        <button id="restartAdaptersBtn" class="setting-action-btn">Restart</button>
+                                    </div>
+                                    <div class="setting-item" data-search-term="windows hotspot settings network sharing">
+                                        <div class="setting-content">
+                                            <span class="setting-label">Windows Hotspot</span>
+                                            <p class="setting-description">Due to the hotspot feature being removed, this will open native Windows Mobile Hotspot settings page.</p>
+                                        </div>
+                                        <button id="openWinHotspotSettingsBtn" class="setting-action-btn">Open</button>
+                                    </div>
+                                </div>
+
+                                <div class="section-title">Data Management</div>
+                                <div class="settings-grid single-column">
+                                    <div class="setting-item" data-search-term="reset settings default factory">
+                                        <div class="setting-content">
+                                            <span class="setting-label">Reset Settings</span>
+                                            <p class="setting-description">Restores all application settings to their default values. The application will reload.</p>
+                                        </div>
+                                        <button id="resetSettingsBtn" class="setting-action-btn btn-danger">Reset</button>
+                                    </div>
+                                    <div class="setting-item" data-search-term="clear local storage cache">
+                                        <div class="setting-content">
+                                            <span class="setting-label">Clear Local Storage</span>
+                                            <p class="setting-description">Clears scan results and customization and other cached data from the browser.</p>
+                                        </div>
+                                        <button id="clearLocalStorageBtn" class="setting-action-btn">Clear Data</button>
+                                    </div>
+                                    <div class="setting-item" data-search-term="open storage folder history logs">
+                                        <div class="setting-content">
+                                            <span class="setting-label">Open Storage Folder</span>
+                                            <p class="setting-description">Opens the folder where history and log files are stored.</p>
+                                        </div>
+                                        <button id="openHistoryFolderBtn" class="setting-action-btn">Open Folder</button>
+                                    </div>
+                                </div>
+                                <div class="settings-grid single-column">
+                                    <div class="setting-item" data-search-term="clear history files logs server">
+                                        <div class="setting-content">
+                                            <span class="setting-label">Clear History Files</span>
+                                            <p class="setting-description">Select and clear specific history logs from the server.</p>
+                                        </div>
+                                        <div class="control-group">
+                                            <select id="clearHistoryDropdown" class="dropdown">
+                                                <option value="scan">Scan History</option>
+                                                <option value="bypass">Bypass History</option>
+                                                <option value="all">All History</option>
+                                            </select>
+                                            <button id="clearHistoryBtn" class="setting-action-btn">Clear</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="section-title">Experimental</div>
+                                <div class="settings-grid single-column">
+                                    <div class="setting-item" data-search-term="beta features experimental auto bypass">
+                                        <div class="setting-content">
+                                            <label for="betaFeaturesToggle" class="setting-label">Enable Beta Features</label>
+                                            <p class="setting-description">Access experimental features like the Auto tab. May be unstable.</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="betaFeaturesToggle">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="section-title">Resources</div>
+                                <div class="settings-grid single-column">
+                                    <div class="setting-item" data-search-term="download oui file vendor lookup full scan">
+                                        <div class="setting-content">
+                                            <span class="setting-label">Download OUI File</span>
+                                            <p class="setting-description">Required for vendor lookups in full scans. (6 MB)</p>
+                                        </div>
+                                        <button id="downloadOuiBtn" class="setting-action-btn">Download</button>
+                                    </div>
+                                </div>
+                        </div>
+
+                            <div id="settings-section-customization" class="settings-section-content">
+                                <h2 class="settings-main-title">Customization</h2>
+                                <div class="section-title">Customize</div>
+                                <div class="settings-grid single-column">
+                                    <div class="setting-item" data-search-term="theme color dark light dracula monokai purple abyss superdark">
+                                        <div class="setting-content">
+                                            <span class="setting-label">Theme</span>
+                                            <p class="setting-description">Choose between available UI themes.</p>
+                                        </div>
+                                        <select id="themeSelector" class="dropdown">
+                                            <option value="dark">Dark</option>
+                                            <option value="light">Light</option>
+                                            <option value="dracula">Dracula</option>
+                                            <option value="monokai">Monokai</option>
+                                            <option value="purple">Shades of Purple</option>
+                                            <option value="abyss">Abyss</option>
+                                            <option value="superdark">Super Dark</option>
+                                        </select>
+                                    </div>
+                                    <div class="setting-item" data-search-term="accent color highlight">
+                                        <div class="setting-content">
+                                            <span class="setting-label">Accent Color</span>
+                                            <p class="setting-description">Pick an accent color for highlights and buttons.</p>
+                                        </div>
+                                        <input type="color" id="accentColorPicker" class="color-picker" value="#0a84ff">
+                                        <button id="resetAccentColorBtn" class="btn-icon" title="Reset Accent Color" aria-label="Reset Accent Color">
+                                            <span class="icon-undo">&#8635;</span>
+                                        </button>
+                                    </div>
+                                    <div class="setting-item" data-search-term="clock format 24 hour 12 hour">
+                                        <div class="setting-content">
+                                            <span class="setting-label">24-Hour Clock</span>
+                                            <p class="setting-description">Toggle between 24-hour and 12-hour time format in the UI.</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="clockFormatToggle">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="setting-item" data-search-term="visible tabs navigation customize">
+                                        <div class="setting-content">
+                                            <span class="setting-label">Visible Tabs</span>
+                                            <p class="setting-description">Choose which navigation tabs are visible in the main menu.</p>
+                                        </div>
+                                        <div id="navTabDropdown" class="custom-select-wrapper">
+                                            <div class="custom-select">
+                                                <div class="custom-select-trigger">Select Tabs <span class="arrow"></span></div>
+                                                <div class="custom-options"></div>
+                                            </div>
+                                        </div>
+                                        <button id="resetNavVisibilityBtn" class="btn-icon" title="Reset Visible Tabs" aria-label="Reset Visible Tabs">
+                                            <span class="icon-undo">&#8635;</span>
+                                        </button>
+                                    </div>
+                                </div>
+                        </div>
+
+                            <div id="settings-section-networking" class="settings-section-content">
+                                <h2 class="settings-main-title">Networking</h2>
+                                <div class="section-title">Scanning</div>
+                                <div class="settings-grid single-column">
+                                    <div class="setting-item" data-search-term="scanning method divide conquer sequential">
+                                        <div class="setting-content">
+                                            <label for="scanningMethodDropdown" class="setting-label">
+                                                <div class="setting-header">
+                                                    <span>Scanning Method</span>
+                                                    <div class="inline-info-icon" id="scanningMethodInfo">?</div>
+                                                </div>
+                                            </label>
+                                            <p class="setting-description">Choose the method for discovering devices on the network.</p>
+                                        </div>
+                                        <select id="scanningMethodDropdown" class="dropdown">
+                                            <option value="divide_and_conquer">Divide and Conquer</option>
+                                            <option value="sequential">Sequential</option>
+                                        </select>
+                                    </div>
+                                    <div class="setting-item" data-search-term="parallel multithreading scans performance">
+                                        <div class="setting-content">
+                                            <label for="parallelScansToggle" class="setting-label">
+                                                <div class="setting-header">
+                                                    <span>Parallel Scans</span>
+                                                    <div class="inline-info-icon" id="parallelScansInfo">?</div>
+                                                </div>
+                                            </label>
+                                            <p class="setting-description">Use multithreading to scan devices concurrently for faster results.</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="parallelScansToggle">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="setting-item" data-search-term="override multiplier threads performance">
+                                        <div class="setting-content">
+                                            <label for="overrideMultiplierInput" class="setting-label">
+                                                <div class="setting-header">
+                                                    <span>Override Multiplier</span>
+                                                    <div class="inline-info-icon" id="overrideMultiplierInfo">?</div>
+                                                </div>
+                                            </label>
+                                            <p id="overrideMultiplierDescription" class="setting-description">Set the multiplier for calculating parallel scan threads.</p>
+                                        </div>
+                                        <input type="number" id="overrideMultiplierInput" class="number-input" min="1" step="1" value="2">
+                                    </div>
+                                </div>
+                                <div class="section-title">Bypass</div>
+                                <div class="settings-grid single-column">
+                                    <div class="setting-item" data-search-term="bypass mode method registry cmd">
+                                        <div class="setting-content">
+                                            <label for="bypassModeDropdown" class="setting-label">
+                                                <div class="setting-header">
+                                                    <span>Bypass Mode</span>
+                                                    <div class="inline-info-icon" id="bypassModeInfo">?</div>
+                                                </div>
+                                            </label>
+                                            <p class="setting-description">Method used for changing the MAC address.</p>
+                                        </div>
+                                        <select id="bypassModeDropdown" class="dropdown">
+                                            <option value="registry">Registry Method</option>
+                                            <option value="cmd">CMD Method</option>
+                                        </select>
+                                    </div>
+                                    <div class="setting-item" data-search-term="pbcc internet connectivity check">
+                                        <div class="setting-content">
+                                            <label for="pbccToggle" class="setting-label">
+                                                <div class="setting-header">
+                                                    <span>PBCC</span>
+                                                    <div class="inline-info-icon" id="pbccInfo">?</div>
+                                                </div>
+                                            </label>
+                                            <p class="setting-description">Check for internet connectivity after a bypass.</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="pbccToggle">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="setting-item" data-search-term="accelerated bypassing fast restart network adapter">
+                                        <div class="setting-content">
+                                            <label for="acceleratedBypassingToggle" class="setting-label">
+                                                <div class="setting-header">
+                                                    <span>Accelerated Bypassing</span>
+                                                    <div class="inline-info-icon" id="acceleratedBypassingInfo">?</div>
+                                                </div>
+                                            </label>
+                                            <p class="setting-description">Automatically restart adapters after a bypass.</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="acceleratedBypassingToggle">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="setting-item" data-search-term="hardware level randomization rdrand mac generation">
+                                        <div class="setting-content">
+                                            <label for="hardwareRngToggle" class="setting-label">Hardware Level Randomization</label>
+                                            <p class="setting-description">Use hardware instructions (RDRAND) for MAC generation. Requires a Intel/AMD cpu from 2012 or newer.</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="hardwareRngToggle">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="settings-section-general" class="settings-section-content">
+                                <h2 class="settings-main-title">Settings</h2>
+                                <div class="section-title">General</div>
+                                <div class="settings-grid single-column">
+                                    <div class="setting-item" data-search-term="auto open page startup">
+                                        <div class="setting-content">
+                                            <label for="autoOpenToggle" class="setting-label">Auto Open Page</label>
+                                            <p class="setting-description">Automatically open the web UI when the application starts.</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="autoOpenToggle">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="setting-item" data-search-term="hide website console window">
+                                        <div class="setting-content">
+                                            <label for="hideWebsiteToggle" class="setting-label">Hide Console Window</label>
+                                            <p class="setting-description">Hide the console window on startup for a cleaner experience.</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="hideWebsiteToggle">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="setting-item" data-search-term="run as administrator admin privileges">
+                                        <div class="setting-content">
+                                            <label for="runAsAdminToggle" class="setting-label">Run as Admin</label>
+                                            <p class="setting-description">Request administrator privileges on startup. (restart required)</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="runAsAdminToggle">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="section-title">Developer</div>
+                                <div class="settings-grid single-column">
+                                    <div class="setting-item" data-search-term="debug level server logs">
+                                        <div class="setting-content">
+                                            <label for="debugModeDropdown" class="setting-label">Debug Level</label>
+                                            <p class="setting-description">Select the level of debug information for server logs.</p>
+                                        </div>
+                                        <select id="debugModeDropdown" class="dropdown">
+                                            <option value="off">Off</option>
+                                            <option value="basic">Basic</option>
+                                            <option value="full">Full</option>
+                                        </select>
+                                    </div>
+                                    <div class="setting-item" data-search-term="server backend flask waitress hypercorn performance">
+                                        <div class="setting-content">
+                                            <label for="serverBackendDropdown" class="setting-label">
+                                                <div class="setting-header">
+                                                    <span>Server Backend</span>
+                                                    <div class="inline-info-icon" id="serverBackendInfo">?</div>
+                                                </div>
+                                            </label>
+                                            <p class="setting-description">Select the server backend. (restart required)</p>
+                                        </div>
+                                        <select id="serverBackendDropdown" class="dropdown">
+                                            <option value="none">None (Flask Default)</option>
+                                            <option value="waitress">Waitress</option>
+                                            <option value="hypercorn">Hypercorn</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </div>
-
-                <!-- Resources Section -->
-                <div class="misc-section">
-                    <h3 class="section-title">Resources</h3>
-                    <div class="setting-item">
-                        <label class="setting-label">
-                            <span>Download OUI File</span>
-                            <p class="setting-description">Downloads the "latest" OUI file for vendor lookups. Required for identifying device manufacturers in full scans.</p>
-                        </label>
-                        <button id="downloadOuiBtn" class="apply-btn">Download OUI File (6 MB)</button>
-                    </div>
+                    </main>
                 </div>
             </div>
-        </div>
-
-        <div id="hotspotView" class="view" style="display: none;">
-            <h1>Mobile Hotspot</h1>
-            <div class="hotspot-container">
-                <div class="hotspot-status-panel">
-                    <div class="status-indicator">
-                        <span id="hotspotStatusText">Checking status...</span>
-                        <div id="hotspotStatusIcon" class="status-icon"></div>
-                    </div>
-                    <button id="toggleHotspotBtn" class="hotspot-btn">Enable Hotspot</button>
-                </div>
-                
-                <div class="hotspot-setup-panel">
-                    <h3>Hotspot Settings</h3>
-                    <div class="setting-item">
-                        <label for="hotspotName" class="setting-label">Network Name (SSID)</label>
-                        <input type="text" id="hotspotName" class="hotspot-input" placeholder="Enter network name">
-                    </div>
-                    <div class="setting-item">
-                        <label for="hotspotPassword" class="setting-label">Password (8+ characters)</label>
-                        <input type="text" id="hotspotPassword" class="hotspot-input" placeholder="Enter password">
-                    </div>
-                    <button id="saveHotspotSettingsBtn" class="apply-btn">Save Settings</button>
-                </div>
-                
-                <div class="connected-devices-panel">
-                    <h3>Connected Devices</h3>
-                    <div id="connectedDevicesList" class="connected-devices-list">
-                        <div class="no-devices-message">No devices connected</div>
-                    </div>
-                </div>
-                
-                <div class="device-control-panel" style="display: none;"> <!-- too lazy to rename -->
-                    <h3>Device Info</h3>
-                    <div id="selectedDeviceInfo" class="selected-device-info"></div>
-                </div>
-            </div> 
-        </div>
 
         <div id="updaterView" class="view" style="display: none;">
             <h1>Update Manager</h1>
-            <div class="updater-container">
-                <div class="update-info">
-                    <div class="version-container">
-                        <div class="version-box">
-                            <div class="version-label">Current Version</div>
-                            <div id="currentVersion" class="version-number">Loading...</div>
+            <div class="updater-layout">
+                <div class="updater-main">
+                    <div class="settings-section">
+                        <div class="section-title">Version Status</div>
+                        <div class="version-status-container">
+                            <div class="version-box">
+                                <span class="version-label">Current Version</span>
+                                <span id="currentVersion" class="version-number">Loading...</span>
+                            </div>
+                            <div class="version-flow">
+                                <div id="updateStatus" class="update-status-box">Checking for updates...</div>
+                                <div class="version-arrow">→</div>
+                                <div class="update-actions">
+                                    <button id="checkUpdateBtn" class="update-btn">Check for Updates</button>
+                                    <button id="downloadUpdateBtn" class="update-btn" disabled>Download Update</button>
+                                </div>
+                            </div>
+                            <div class="version-box">
+                                <span class="version-label">Latest Version</span>
+                                <span id="latestVersion" class="version-number">Checking...</span>
+                            </div>
                         </div>
-                        <div class="version-box">
-                            <div class="version-label">Latest Version</div>
-                            <div id="latestVersion" class="version-number">Checking...</div>
+                        <div id="updateProgressContainer" class="progress-container" style="display: none;">
+                            <div id="updateProgressText" class="progress-text">Starting download...</div>
+                            <div class="progress-bar-container">
+                                <div id="updateProgressBar" class="progress-bar"></div>
+                            </div>
                         </div>
-                    </div>
-                    
-                    <div class="update-status-container">
-                        <div id="updateStatus" class="status checking">Checking for updates...</div>
-                    </div>
-                    
-                    <div class="update-actions">
-                        <button id="checkUpdateBtn" class="update-btn check-btn">Check for Updates</button>
-                        <button id="downloadUpdateBtn" class="update-btn download-btn" disabled>Download Update</button>
-                    </div>
-                    
-                    <div id="updateProgressContainer" class="progress-container" style="display: none;">
-                        <div class="progress-bar-container">
-                            <div id="updateProgressBar" class="progress-bar"></div>
-                        </div>
-                        <div id="updateProgressText" class="progress-text">Starting download...</div>
                     </div>
                 </div>
-                
-                <div class="changelog-section">
-                    <h2>Changelog</h2>
-                    <div id="changelogContainer" class="changelog-container">
-                        <p>No changelog information available. Click "Check for Updates" to load the latest information.</p>
+                <div class="updater-sidebar">
+                    <div class="settings-section">
+                        <div class="section-title">Changelog</div>
+                        <div id="changelogContainer" class="changelog-container">
+                            <p>Click "Check for Updates" to load the latest information.</p>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
 
         <div id="monitorView" class="view" style="display: none;">
-            <h1>Connection Monitor</h1>
+            <div class="scanner-header">
+                <h1>Connection Monitor</h1>
+                <p>View active outbound network connections by process.</p>
+            </div>
             <div class="monitor-container">
                 <div class="monitor-header">
-                    <div class="monitor-controls">
-                        <select id="adapterSelector" class="adapter-dropdown">
-                            <option value="all">All Adapters</option>
-                            <!-- Will be populated with available network adapters -->
-                        </select>
-                        <button id="refreshConnectionsBtn" class="monitor-btn">Refresh</button>
-                        <div class="auto-refresh">
-                            <input type="checkbox" id="autoRefreshToggle" class="toggle">
-                            <label for="autoRefreshToggle">Auto refresh</label>
-                        </div>
+                    <div class="search-container">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="processSearchInput" class="search-input" placeholder="Filter by PID...">
                     </div>
                     <div class="monitor-stats">
-                        <span id="connectionCount">0 connections</span>
+                        <span id="connectionCount">Loading...</span>
                         <span id="lastRefreshTime"></span>
                     </div>
                 </div>
                 
-                <div class="connections-container">
-                    <div class="connections-header">
-                        <div class="connection-col process-col">Process</div>
-                        <div class="connection-col duration-col">Duration</div>
-                        <div class="connection-col dest-col">Destination</div>
-                        <div class="connection-col type-col">Type</div>
-                        <div class="connection-col actions-col">Actions</div>
-                    </div>
-                    <div id="connectionsBody" class="connections-body">
-                        <!-- Connection items will be added here dynamically -->
-                    </div>
-                </div>
-                
-                <div id="whoisPanel" class="whois-panel" style="display: none;">
-                    <div class="whois-header">
-                        <h3>WHOIS Information</h3>
-                        <button id="closeWhoisBtn" class="close-btn">×</button>
-                    </div>
-                    <div id="whoisContent" class="whois-content">
-                        <div class="loading-spinner"></div>
-                    </div>
+                <div class="connections-container" id="processListContainer">
                 </div>
             </div>
         </div>
+
+        <div id="autoView" class="view" style="display: none;">
+            <div class="scanner-header">
+                <h1>Auto Bypass</h1>
+                <p>Configure a background service to automate bypassing.</p>
+            </div>
+
+            <div class="settings-section">
+                <div class="section-title">
+                    Configuration
+                    <div class="inline-info-icon" id="autoBypassInfo">?</div>
+                </div>
+                <div class="settings-grid">
+                    <div class="setting-item">
+                        <div class="setting-content">
+                            <label for="autoBypassToggle" class="setting-label">Enable Auto Bypass</label>
+                            <p class="setting-description">Automatically run a bypass if internet connection is lost. Runs on startup.</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="autoBypassToggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-content">
+                            <label for="autoBypassAdapter" class="setting-label">Target Adapter</label>
+                            <p class="setting-description">Select the network adapter to monitor and bypass.</p>
+                        </div>
+                        <select id="autoBypassAdapter" class="dropdown">
+                            <option value="">Loading adapters...</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-content">
+                            <label for="autoBypassInterval" class="setting-label">Check Interval (seconds)</label>
+                            <p class="setting-description">How often to check for internet connectivity. Minimum 30 seconds.</p>
+                        </div>
+                        <input type="text" inputmode="numeric" id="autoBypassInterval" class="hotspot-input" min="30" value="60">
+                    </div>
+                </div>
+                <div class="setting-footer">
+                    <button id="applyAutoBypassSettings" class="apply-btn">Apply</button>
+                </div>
+            </div>
+            <div class="settings-section">
+                <div class="section-title">Service Process</div>
+                <div id="autoBypassStatusContainer" class="settings-grid">
+                    <div class="setting-item">
+                        <div class="setting-content">
+                            <span class="setting-label">Status</span>
+                            <p id="autoBypassStatus" class="setting-description">Loading...</p>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-content">
+                            <span class="setting-label">Process ID (PID)</span>
+                            <p id="autoBypassPid" class="setting-description">N/A</p>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-content">
+                            <span class="setting-label">Uptime</span>
+                            <p id="autoBypassUptime" class="setting-description">N/A</p>
+                        </div>
+                    </div>
+                     <div class="setting-item">
+                        <div class="setting-content">
+                            <span class="setting-label">Start Time</span>
+                            <p id="autoBypassStartTime" class="setting-description">N/A</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="setting-footer">
+                    <button id="toggleAutoBypassTaskBtn" class="btn btn-secondary" disabled>Pause Task</button>
+                    <button id="killAutoBypassBtn" class="btn btn-danger" disabled>Kill Process</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div id="whoisPanel" class="lookup-panel" style="display: none;">
+        <div class="lookup-header">
+            <h3>WHOIS Information</h3>
+            <button id="closeWhoisBtn" class="close-btn">×</button>
+        </div>
+        <div id="whoisContent" class="lookup-content">
+            <div class="loading-spinner"></div>
+        </div>
     </div>
-    
+
+    <div id="deepDivePanel" class="lookup-panel" style="display: none;">
+        <div class="lookup-header">
+            <h3>Deep Dive Analysis</h3>
+            <button id="closeDeepDiveBtn" class="close-btn">×</button>
+        </div>
+        <div id="deepDiveContent" class="lookup-content">
+            <div class="loading-spinner"></div>
+        </div>
+    </div>
+
+    <div id="revertMacModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h2>Confirm MAC Revert</h2>
+            <p>Are you sure you want to revert the MAC address for this adapter?</p>
+            <div class="revert-info">
+                <div class="revert-mac-box old-mac">
+                    <span class="revert-label">Current MAC</span>
+                    <span id="revertCurrentMac" class="revert-mac"></span>
+                </div>
+                <div class="revert-arrow">→</div>
+                <div class="revert-mac-box new-mac">
+                    <span class="revert-label">Reverting to</span>
+                    <span id="revertToMac" class="revert-mac"></span>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button id="confirmRevertBtn" class="modal-btn confirm">Revert</button>
+                <button id="cancelRevertBtn" class="modal-btn cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <div id="confirmationModal" class="modal" style="display: none;">
         <div class="modal-content">
             <h2>Confirm Changes</h2>
-            <p>The following changes will be applied:</p>
-            <ul id="changesList" class="changes-list"></ul>
+            <p>Please review the changes you are about to apply.</p>
+            <p id="restartRequiredMessage" style="display: none;"></p>
+            <div id="changesList" class="changes-list">
+                <!-- js populates this with a list of changes to confirm -->
+            </div>
             <div class="modal-actions">
-                <button id="confirmBtn" class="modal-btn confirm">Yes</button>
-                <button id="cancelBtn" class="modal-btn cancel">No</button>
+                <button id="confirmBtn" class="btn apply-btn">Apply</button>
+                <button id="cancelBtn" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="genericConfirmModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h2 id="genericConfirmTitle">Confirm Action</h2>
+            <p id="genericConfirmMessage">Are you sure you want to proceed?</p>
+            <div class="modal-actions">
+                <button id="genericConfirmBtn" class="btn apply-btn">Confirm</button>
+                <button id="genericCancelBtn" class="btn btn-secondary">Cancel</button>
             </div>
         </div>
     </div>
 
     <div id="notificationContainer" class="notification-container"></div>
-    <div class="version">v1.4</div>
+    
+    <!-- fab for settings and the version display -->
+    <button id="settings-fab" class="settings-fab" aria-label="Open Settings">
+        <span class="settings-icon">⚙️</span>
+    </button>
+    <div id="version-display" class="version">v1.5</div>
 
-    <script src="src/scanner/app.js"></script>
-    <script src="src/settings/settings.js"></script>
-    <script src="src/misc/misc.js"></script>
-    <script src="src/bypass/yep.js"></script>
-    <script src="src/history/tracker.js"></script>
-    <script src="src/visualizer/visualizer.js"></script>
-    <script src="src/hotspot/hahaspot.js"></script>
-    <script src="src/home/home.js"></script>
-    <script src="src/updater/updating.js"></script>
-    <script src="src/monitor/monitoring.js"></script>
+    <script src="src/js/scanner.js"></script>
+    <script src="src/js/settings.js"></script>
+    <script src="src/js/misc.js"></script> 
+    <script src="src/js/bypass.js"></script>
+    <script src="src/js/history.js"></script>
+    <script src="src/js/home.js"></script> 
+    <script src="src/js/updating.js"></script>
+    <script src="src/js/monitor.js"></script>
+    <script src="src/js/auto.js"></script>
+    <script src="src/js/ui.js"></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            function showViewFromHash() {
+            const showViewFromHash = () => {
                 const hash = window.location.hash || '#home';
                 const views = {
                     '#home': 'homeView',
                     '#scanner': 'scannerView',
                     '#bypass': 'bypassView',
                     '#history': 'historyView',
-                    '#visualizer': 'visualizerView',
                     '#settings': 'settingsView',
                     '#misc': 'miscView',
-                    '#hotspot': 'hotspotView',
                     '#updater': 'updaterView',
-                    '#monitor': 'monitorView'
+                    '#monitor': 'monitorView',
+                    '#auto': 'autoView'
                 };
-            
+
                 Object.values(views).forEach(viewId => {
-                    document.getElementById(viewId).style.display = 'none';
+                    const viewElement = document.getElementById(viewId);
+                    if (viewElement) {
+                        viewElement.style.display = 'none';
+                        viewElement.classList.remove('visible');
+                    }
                 });
+
                 const viewId = views[hash];
                 if (viewId) {
-                    document.getElementById(viewId).style.display = 'block';
-                    
+                    const viewElement = document.getElementById(viewId);
+                    if (viewElement) {
+                        viewElement.style.display = 'block';
+                        setTimeout(() => viewElement.classList.add('visible'), 10);
+                    }
+
                     if (viewId === 'homeView') {
-                        if (window.loadStatistics) {
-                            window.loadStatistics();
-                        }
-                        if (window.loadSystemInfo) {
-                            window.loadSystemInfo();
-                        }
+                        if (window.loadStatistics) window.loadStatistics();
+                        if (window.loadSystemInfo) window.loadSystemInfo();
                     }
                 }
-            }
-        
-            function updateActiveNavLink() {
+            };
+
+            const updateActiveNavLink = () => {
                 const hash = window.location.hash || '#home';
-                
-                document.querySelectorAll('.nav-link').forEach(link => {
-                    link.classList.remove('active');
-                });
-                
-                const activeLink = document.querySelector(`a[href="${hash}"]`);
+                document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
+                const activeLink = document.querySelector(`.pill-nav a[href="${hash}"]`);
                 if (activeLink) {
                     activeLink.classList.add('active');
+                    const glider = document.querySelector('.pill-nav .glider');
+                    if (glider) {
+                        glider.style.width = `${activeLink.offsetWidth}px`;
+                        glider.style.left = `${activeLink.offsetLeft}px`;
+                    }
                 }
-            }
-            
+            };
+
+            window.updateActiveNavLink = updateActiveNavLink; // stick this on window so we can call it from other scripts
+
             window.addEventListener('hashchange', () => {
                 showViewFromHash();
                 updateActiveNavLink();
             });
-            
+
             showViewFromHash();
             updateActiveNavLink();
-        });
 
-        document.addEventListener('DOMContentLoaded', () => {
-            const dropdownHeaders = document.querySelectorAll('.dropdown-header');
-            
-            dropdownHeaders.forEach(header => {
-                header.addEventListener('click', () => {
-                    header.classList.toggle('active');
-                    
-                    const content = header.nextElementSibling;
-                    content.classList.toggle('show');
+            fetch('/api/client-loaded', { method: 'POST' })
+                .catch(err => console.error('Failed to report client load:', err));
+
+            // --- settings panel stuff ---
+            const settingsFab = document.getElementById('settings-fab');
+            const settingsPanel = document.getElementById('settings-panel');
+            const closeSettingsPanelBtn = document.getElementById('closeSettingsPanelBtn');
+            const settingsSearchInput = document.getElementById('settingsSearchInput');
+            const settingsPanelMain = document.getElementById('settings-panel-main');
+            const settingsNavLinks = document.querySelectorAll('.settings-nav-link');
+
+            if (settingsFab && settingsPanel && closeSettingsPanelBtn) {
+                const openSettingsPanel = () => {
+                    settingsPanel.style.display = 'flex';
+                };
+
+                const closeSettingsPanel = () => {
+                    settingsPanel.style.display = 'none';
+                };
+
+                settingsFab.addEventListener('click', openSettingsPanel);
+                closeSettingsPanelBtn.addEventListener('click', closeSettingsPanel);
+                settingsPanel.addEventListener('click', (e) => {
+                    if (e.target === settingsPanel) {
+                        closeSettingsPanel();
+                    }
                 });
-            });
-            
-            function openActiveDropdown() {
-                const hash = window.location.hash || '#home';
-                
-                document.querySelectorAll('.nav-link').forEach(link => {
-                    link.classList.remove('active');
-                });
-                
-                const activeLink = document.querySelector(`a[href="${hash}"]`);
-                
-                if (activeLink) {
-                    activeLink.classList.add('active');
-                    
-                    const parentDropdown = activeLink.closest('.dropdown-content');
-                    if (parentDropdown) {
-                        parentDropdown.classList.add('show');
-                        const header = parentDropdown.previousElementSibling;
-                        if (header) {
-                            header.classList.add('active');
+
+                // search logic for settings
+                settingsSearchInput.addEventListener('input', (e) => {
+                    const searchTerm = e.target.value.toLowerCase().trim();
+                    const settingsPanelMain = document.getElementById('settings-panel-main');
+
+                    // first, just hide/show individual setting items that match
+                    settingsPanelMain.querySelectorAll('.setting-item').forEach(item => {
+                        const terms = item.dataset.searchTerm || '';
+                        const isVisible = searchTerm === '' || terms.toLowerCase().includes(searchTerm);
+                        item.style.display = isVisible ? '' : 'none';
+                    });
+
+                    // now, hide section titles if all their items are hidden
+                    settingsPanelMain.querySelectorAll('.settings-section-content').forEach(section => {
+                        let sectionHasVisibleContent = false;
+
+                        // handle the sub-titles within a section
+                        section.querySelectorAll('.section-title').forEach(title => {
+                            const contentGroup = title.nextElementSibling;
+                            let subSectionHasVisibleItems = false;
+                            if (contentGroup && contentGroup.classList.contains('settings-grid')) {
+                                if (contentGroup.querySelector('.setting-item:not([style*="display: none"])')) {
+                                    subSectionHasVisibleItems = true;
+                                }
+                            }
+                            
+                            const isVisible = searchTerm === '' || subSectionHasVisibleItems;
+                            title.style.display = isVisible ? '' : 'none';
+                            if (isVisible) {
+                                sectionHasVisibleContent = true;
+                            }
+                        });
+
+                        // double-check for any visible items that aren't under a sub-title
+                        if (section.querySelector('.setting-item:not([style*="display: none"])')) {
+                            sectionHasVisibleContent = true;
                         }
+
+                        // hide the main section title if the whole section is empty
+                        const mainTitle = section.querySelector('.settings-main-title');
+                        if (mainTitle) {
+                            mainTitle.style.display = searchTerm === '' || sectionHasVisibleContent ? '' : 'none';
+                        }
+                    });
+                });
+
+                const accentColorPicker = document.getElementById('accentColorPicker');
+                const resetAccentColorBtn = document.getElementById('resetAccentColorBtn');
+                const root = document.documentElement;
+
+                function getLuminance(hex) {
+                    if (!hex) return 0;
+                    hex = hex.replace('#', '');
+                    if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+                    const r = parseInt(hex.substring(0, 2), 16);
+                    const g = parseInt(hex.substring(2, 4), 16);
+                    const b = parseInt(hex.substring(4, 6), 16);
+                    // using the luma formula to figure out if the color is light or dark
+                    return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+                }
+
+                function updateAccentTextColor(color) {
+                    if (getLuminance(color) > 0.5) {
+                        root.classList.add('accent-is-light');
+                    } else {
+                        root.classList.remove('accent-is-light');
                     }
                 }
+
+                accentColorPicker.addEventListener('input', (e) => {
+                    const newColor = e.target.value;
+                    root.style.setProperty('--accent', newColor); 
+                    updateAccentTextColor(newColor);
+                });
+
+                resetAccentColorBtn.addEventListener('click', () => {
+                    root.style.removeProperty('--accent');
+                    
+                    setTimeout(() => {
+                        const newColor = getComputedStyle(root).getPropertyValue('--accent').trim();
+                        accentColorPicker.value = newColor;
+                        updateAccentTextColor(newColor);
+                    }, 50);
+                });
+
+                // run this once on load to set the initial text color
+                updateAccentTextColor(getComputedStyle(root).getPropertyValue('--accent').trim());
+
+                // handle smooth scrolling and active states for the settings nav
+                settingsNavLinks.forEach(link => {
+                    link.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        const targetId = link.getAttribute('href').substring(1);
+                        const targetElement = document.getElementById(targetId);
+                        if (targetElement) {
+                            settingsPanelMain.scrollTo({
+                                top: targetElement.offsetTop - 30,
+                                behavior: 'smooth'
+                            });
+                        }
+                    });
+                });
+
+                settingsPanelMain.addEventListener('scroll', () => {
+                    let currentSectionId = '';
+                    settingsNavLinks.forEach(link => {
+                        const sectionId = link.getAttribute('href').substring(1);
+                        const section = document.getElementById(sectionId);
+                        if (section.offsetTop <= settingsPanelMain.scrollTop + 40) {
+                            currentSectionId = link.getAttribute('href');
+                        }
+                    });
+
+                    settingsNavLinks.forEach(link => {
+                        link.classList.toggle('active', link.getAttribute('href') === currentSectionId);
+                    });
+                });
             }
-            
-            openActiveDropdown();
-            window.addEventListener('hashchange', openActiveDropdown);
         });
     </script>
 </body>

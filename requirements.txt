@@ -1,5 +1,7 @@
 flask-Cors
 netifaces
+hypercorn
+waitress
 requests
 pywin32
 getmac

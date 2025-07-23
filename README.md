@@ -1,52 +1,51 @@
 ## network related thing
 
-### key features
+a collection of networking tools for windows.
 
-- **disable devices**: block devices on your network by their ip and mac addresses, with built in anti-anti-disable features
-- **network scanner**: scan your network to see all active devices, their ip, mac, hostname, and vendor
-- **mac address bypass**: change your mac address using registry or cmd methods without needing to restart
-- **network visualizer**: shows the users network in the in a graph/list view
-- **hotspot creator**: allows the user to easily create a hotspot so other devices can join and have internet
-- **Connection monitor**: allows the user to see connections to the users computer
-
-### other features
-
-- **history management**: view scan and bypass history. revert mac address back if needed.
-- **settings**: customize how the app works, like auto-opening or hiding the website
-- **misc tools**: clear console, local storage, or history. download the latest oui file for vendor lookups
-
-### version overview
-
-| version | release focus | released | status |
-|---------|---------------|----------|--------|
-| `v1.4` | updater, home and monitoring with electron support (and more ui cleanup)  | May 17, 2025 | ![completed](https://img.shields.io/badge/status-completed-brightgreen) |
-| `v1.3` | hotspot & ui polish | April 28, 2025 | ![completed](https://img.shields.io/badge/status-completed-brightgreen) |
-| `v1.2` | network mapping & ui | April 17, 2025 | ![completed](https://img.shields.io/badge/status-completed-brightgreen) |
-| `v1.1` | core optimizations | April 4, 2025 | ![completed](https://img.shields.io/badge/status-completed-brightgreen) |
-| `v1.0` | initial release | March 30, 2025 | ![completed](https://img.shields.io/badge/status-completed-brightgreen) |
+---
 
 ## how to use
 
-download latest version pre-compiled executable [here](https://github.com/countervolts/network-related-thing/releases)
+the easiest way is to just download the latest pre-compiled version.
+
+-   **download the latest release [here](https://github.com/countervolts/network-related-thing/releases)**
+
+<details>
+<summary><b>running source</b></summary>
 
 ### requirements
 
-- python 3.10 or higher
-- windows 10/11
+-   python 3.8 or higher
+-   windows 10/11
 
-### running Source
+### running source
 
 ```sh
 python -m pip install -r requirements.txt
+
 python server.py
 ```
 
 ### building source
 
-1. download the code [here](https://github.com/countervolts/network-related-thing/archive/refs/heads/main.zip) 
+1.  download the source code [here](https://github.com/countervolts/network-related-thing/archive/refs/heads/main.zip).
+2.  extract the folder somewhere.
+3.  open `builders` folder and run the build script you want:
+    -   `build.cmd` - compiles the python server into a single `.exe`.
+    -   `electron-build.cmd` - compiles the project into a standalone desktop application using electron.
+4.  wait for it to finish. the final app will be in the `release` folder.
 
-2. open and extract the folder to your desktop
+</details>
 
-3. run `build.cmd` and wait for it to finish (make sure you have atleast python installed) 
+---
 
-4. wait for it to finish installing the needed things aswell compiling the source
+### version overview
+
+| version | release focus                                                       | released      | status                                                                          |
+| :------ | :-------------------------------------------------------------------- | :------------ | :------------------------------------------------------------------------------ |
+| `v1.5`  | ui/ux redesign with some functions changes and lots of new settings                          | july 22, 2025 | ![completed](https://img.shields.io/badge/status-completed-brightgreen)         |
+| `v1.4`  | updater, home and monitoring with electron support (and more ui cleanup) | may 17, 2025  | ![completed](https://img.shields.io/badge/status-completed-brightgreen)         |
+| `v1.3`  | hotspot & ui polish                                                   | april 28, 2025 | ![completed](https://img.shields.io/badge/status-completed-brightgreen)         |
+| `v1.2`  | network mapping & ui                                                  | april 17, 2025 | ![completed](https://img.shields.io/badge/status-completed-brightgreen)         |
+| `v1.1`  | core optimizations                                                    | april 4, 2025  | ![completed](https://img.shields.io/badge/status-completed-brightgreen)         |
+| `v1.0`  | initial release                                                       | march 30, 2025 | ![completed](https://img.shields.io/badge/status-completed-brightgreen)         |

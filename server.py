@@ -1,27 +1,30 @@
-from src.bypass.bypass import transport_names, neftcfg_search, init_bypass, IGNORE_LIST, restart_all_adapters, get_adapter_name
+import time
+START_TIME = time.time()
+_CLIENT_LOADED = False
+
+from src.bypass import transport_names, neftcfg_search, init_bypass, IGNORE_LIST, restart_all_adapters, get_adapter_name, get_active_network_adapter
 from flask import Flask, jsonify, send_from_directory, redirect, request, Response, stream_with_context
+from hypercorn.asyncio import serve as hypercorn_serve
 from src.ping import scan_network, get_default_gateway
 from src.netman import GarpSpoofer, ping_manager
 from src.monitor import connection_monitor
 from werkzeug.exceptions import NotFound 
+from hypercorn.config import Config
 from getmac import get_mac_address
 from functools import lru_cache
 from flask_cors import CORS
 from threading import Lock
-import urllib.request
+from waitress import serve
 import subprocess
 import threading
-import requests
 import platform
+import datetime
 import logging
+import asyncio
 import socket
-import GPUtil
 import ctypes
 import winreg
 import signal
-import psutil
-import shutil
-import base64
 import json
 import time
 import uuid
@@ -30,12 +33,11 @@ import re
 import os
 
 def is_running_in_electron():
-    # Check for specific environment variable that Electron can set
     return os.environ.get('RUNNING_IN_ELECTRON') == '1' or \
            os.environ.get('ELECTRON_RUN_AS_NODE') is not None or \
            os.path.basename(sys.executable).lower() in ['electron.exe', 'electron'] or \
            os.environ.get('ELECTRON') is not None or \
-           '--electron-wrapper' in sys.argv  # Check for command line argument
+           '--electron-wrapper' in sys.argv 
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -48,28 +50,33 @@ if not os.path.exists(HISTORY_FOLDER):
 SCAN_HISTORY_FILE = os.path.join(os.getenv('APPDATA'), "ayosbypasser", "scans.json")
 BYPASS_HISTORY_FILE = os.path.join(os.getenv('APPDATA'), "ayosbypasser", "bypasses.json")
 APPDATA_LOCATION = os.path.join(os.getenv('APPDATA'), "ayosbypasser")
+OUI_FILE = os.path.join(APPDATA_LOCATION, "oui.txt")
 OUI_URL = "https://standards-oui.ieee.org/"
 
 LOG_FILE = os.path.join(APPDATA_LOCATION, "latest.log")
 
-# Only set up file logging if running in Electron
 if is_running_in_electron():
     if not os.path.exists(APPDATA_LOCATION):
         os.makedirs(APPDATA_LOCATION)
     file_handler = logging.FileHandler(LOG_FILE, encoding='utf-8', mode='w')
     file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
     logging.getLogger().addHandler(file_handler)
-    # Optionally set the root logger level here if you want
     logging.getLogger().setLevel(logging.DEBUG)
 
 DEFAULT_SETTINGS = {
     "hide_website": True,
     "auto_open_page": True,
-    "debug_mode": "basic",
+    "debug_mode": "off",
     "bypass_mode": "registry",
     "run_as_admin": False,
-    "preserve_hotspot": False,
-    "hardware_rng": True
+    "hardware_rng": True,
+    "pbcc_enabled": False,
+    "accelerated_bypassing": True,
+    "server_backend": "waitress",
+    "scanning_method": "divide_and_conquer",
+    "parallel_scans": True,
+    "override_multiplier": 4,
+    "beta_features": False
 }
 
 network_controller = GarpSpoofer()
@@ -82,95 +89,198 @@ PING_CACHE = {}
 PING_CACHE_TIMEOUT = 2
 ping_lock = Lock()
 
-HOTSPOT_DEVICE_STATE = {}
-HOTSPOT_SETTINGS_FILE = os.path.join(APPDATA_LOCATION, "hotspot_settings.json")
+SERVICE_NAME = "NetworkRelatedThingAutoBypass"
+AUTO_BYPASS_CONFIG_FILE = os.path.join(APPDATA_LOCATION, "auto_bypass_config.json")
 
-def enable_internet_sharing(internet_adapter):
+def is_admin():
     try:
-        # Get adapter GUIDs from their friendly names
-        wmi_query = f'SELECT * FROM Win32_NetworkAdapter WHERE NetConnectionID="{internet_adapter}"'
-        internet_guid = subprocess.check_output(['wmic', 'path', wmi_query, 'get', 'GUID'], 
-                                                text=True).strip().split('\n')[1].strip()
-        
-        # Enable ICS through registry
-        ics_key = r"HKLM\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\SharingConfig"
-        subprocess.run(['reg', 'add', ics_key, '/v', 'SharingMode', '/t', 'REG_DWORD', '/d', '1', '/f'], check=True)
-        subprocess.run(['reg', 'add', f"{ics_key}\\{internet_guid}", '/v', 'SharingMode', '/t', 'REG_DWORD', '/d', '1', '/f'], check=True)
-        
-        # Restart the Internet Connection Sharing service
-        subprocess.run(['net', 'stop', 'SharedAccess'], check=True)
-        subprocess.run(['net', 'start', 'SharedAccess'], check=True)
-        
-        return True
-    except Exception as e:
-        print(f"\033[91m[ERROR] Failed to enable internet sharing via registry: {e}\033[0m")
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except:
         return False
 
-@app.route('/hotspot/status', methods=['GET'])
-def get_hotspot_status():
+def run_schtasks(args):
     try:
-        # Use PowerShell to query the Mobile Hotspot status
-        ps_command = '''
-        Add-Type -AssemblyName System.Runtime.WindowsRuntime
-        $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | ? { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         
-        Function Await($WinRtTask, $ResultType) {
-            $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
-            $netTask = $asTask.Invoke($null, @($WinRtTask))
-            $netTask.Wait(-1) | Out-Null
-            $netTask.Result
-        }
+        result = subprocess.run(
+            ['schtasks'] + args,
+            check=True,
+            capture_output=True,
+            text=True,
+            startupinfo=startupinfo
+        )
+        return result.stdout, result.stderr
+    except subprocess.CalledProcessError as e:
+        if "ERROR: The system cannot find the file specified." in e.stderr:
+            return "", "Task not found"
+        app.logger.error(f"Schtasks error: {e.stderr}")
+        raise Exception(e.stderr)
+    except Exception as e:
+        app.logger.error(f"Failed to run schtasks: {e}")
+        raise
+
+@app.route('/auto/status', methods=['GET'])
+def auto_status():
+    if not settings.get("beta_features"):
+        return jsonify({'error': 'This is a beta feature and is not enabled.'}), 403
+    import psutil
+    try:
+        pid = None
+        start_time_iso = None
+        process_status = "Not running"
+        for proc in psutil.process_iter(['pid', 'name', 'create_time']):
+            if proc.info['name'] == 'auto_bypass_service.exe':
+                pid = proc.info['pid']
+                start_time_iso = datetime.datetime.fromtimestamp(proc.info['create_time']).isoformat()
+                process_status = "Running"
+                break
+
+        stdout, stderr = run_schtasks(['/query', '/tn', SERVICE_NAME, '/fo', 'list'])       
+        task_status_str = "Not installed"
+        task_enabled = False        
+        if "Task not found" not in stderr:
+            task_status_str = "Installed" # Default if status line not found
+            for line in stdout.splitlines():
+                if line.startswith('Status:'):
+                    task_status_val = line.split(':', 1)[1].strip()
+                    if task_status_val == "Ready":
+                        task_status_str = "Enabled (Idle)"
+                        task_enabled = True
+                    elif task_status_val == "Running":
+                        task_status_str = "Enabled (Running)"
+                        task_enabled = True
+                    elif task_status_val == "Disabled":
+                        task_status_str = "Disabled"
+                        task_enabled = False
+                    else:
+                        task_status_str = f"State: {task_status_val}"
+                    break
         
-        # Get WiFi Hotspot API
-        $connectionProfile = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetInternetConnectionProfile()
-        $tetheringManager = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($connectionProfile)
+        interval = 60
+        transport_id = None
+        config_enabled = False
+        if os.path.exists(AUTO_BYPASS_CONFIG_FILE):
+            with open(AUTO_BYPASS_CONFIG_FILE, 'r') as f:
+                config = json.load(f)
+                interval = config.get('interval', 60)
+                transport_id = config.get('transport_id')
+                config_enabled = config.get('enabled', False)
+
+        return jsonify({
+            'task_status': task_status_str,
+            'process_status': process_status,
+            'config_enabled': config_enabled,
+            'task_enabled': task_enabled,
+            'interval': interval,
+            'transport_id': transport_id,
+            'pid': pid,
+            'start_time': start_time_iso
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error in /auto/status: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/auto/kill', methods=['POST'])
+def kill_auto_bypass_process():
+    if not settings.get("beta_features"):
+        return jsonify({'error': 'This is a beta feature and is not enabled.'}), 403
+    import psutil
+    if not is_admin():
+        return jsonify({'error': 'This action requires administrative privileges.'}), 403
+    
+    processes_killed = []
+    try:
+        for proc in psutil.process_iter(['pid', 'name']):
+            if proc.info['name'] == 'auto_bypass_service.exe':
+                try:
+                    proc.kill()
+                    processes_killed.append(proc.info['pid'])
+                except psutil.NoSuchProcess:
+                    pass 
+                except Exception as e:
+                    app.logger.error(f"Failed to kill process {proc.info['pid']}: {str(e)}")
+
+        if not processes_killed:
+            return jsonify({'success': False, 'error': 'Auto Bypass service process not found.'}), 404
         
-        if ($tetheringManager.TetheringOperationalState -eq 1) {
-            # Hotspot is active
-            Write-Output "HOTSPOT_ACTIVE"
-        } else {
-            # Hotspot is not active
-            Write-Output "HOTSPOT_INACTIVE"
-        }
-        '''
+        return jsonify({'success': True, 'message': f'Terminated {len(processes_killed)} process(es) with PIDs: {", ".join(map(str, processes_killed))}.'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Failed to kill processes: {str(e)}'}), 500
+
+@app.route('/auto/toggle-task', methods=['POST'])
+def toggle_auto_bypass_task():
+    if not settings.get("beta_features"):
+        return jsonify({'error': 'This is a beta feature and is not enabled.'}), 403
+    if not is_admin():
+        return jsonify({'error': 'This action requires administrative privileges.'}), 403
+
+    try:
+        stdout, stderr = run_schtasks(['/query', '/tn', SERVICE_NAME, '/fo', 'list'])
+        if "Task not found" in stderr:
+            return jsonify({'success': False, 'error': 'Task not found. Cannot toggle.'}), 404
+
+        is_currently_enabled = False
+        for line in stdout.splitlines():
+            if line.startswith('Status:') and line.split(':', 1)[1].strip() != "Disabled":
+                is_currently_enabled = True
+                break
         
-        result = subprocess.run(["powershell", "-Command", ps_command], capture_output=True, text=True)
+        # Toggle the state
+        action = '/disable' if is_currently_enabled else '/enable'
+        run_schtasks(['/change', '/tn', SERVICE_NAME, action])
         
-        if "HOTSPOT_ACTIVE" in result.stdout:
-            return jsonify({"enabled": True})
+        message = f"Task '{SERVICE_NAME}' has been {'disabled' if is_currently_enabled else 'enabled'}."
+        return jsonify({'success': True, 'message': message})
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Failed to toggle task: {str(e)}'}), 500
+
+@app.route('/auto/configure', methods=['POST'])
+def auto_configure():
+    if not settings.get("beta_features"):
+        return jsonify({'error': 'This is a beta feature and is not enabled.'}), 403
+    import shutil
+    if not is_admin():
+        return jsonify({'error': 'This action requires administrative privileges.'}), 403
+
+    data = request.get_json()
+    enabled = data.get('enabled', False)
+    interval = data.get('interval', 60)
+    transport_id = data.get('transport_id')
+
+    with open(AUTO_BYPASS_CONFIG_FILE, 'w') as f:
+        json.dump({'enabled': enabled, 'interval': interval, 'transport_id': transport_id}, f)
+
+    try:
+        service_exe_path = ""
+        if getattr(sys, 'frozen', False): 
+            embedded_service_path = os.path.join(sys._MEIPASS, 'auto_bypass_service.exe')
+            extracted_service_path = os.path.join(APPDATA_LOCATION, 'auto_bypass_service.exe')
+            shutil.copy2(embedded_service_path, extracted_service_path)
+            service_exe_path = extracted_service_path
+        else: 
+            return jsonify({'error': 'This feature only works in the compiled application.'}), 500
+
+        if not os.path.exists(service_exe_path):
+             return jsonify({'error': f'Service executable not found at {service_exe_path}. Please rebuild the application.'}), 500
+
+        if enabled:
+            run_schtasks([
+                '/create', '/tn', SERVICE_NAME, '/tr', f'"{service_exe_path}"',
+                '/sc', 'onlogon', '/rl', 'highest', '/f'
+            ])
+            run_schtasks(['/change', '/tn', SERVICE_NAME, '/it', '/enable']) 
+            message = "Auto Bypass service has been enabled and will run on next login."
         else:
-            return jsonify({"enabled": False})
+            _, stderr = run_schtasks(['/query', '/tn', SERVICE_NAME])
+            if "Task not found" not in stderr:
+                run_schtasks(['/change', '/tn', SERVICE_NAME, '/disable'])
+            message = "Auto Bypass service has been disabled."
+            
+        return jsonify({'message': message})
     except Exception as e:
-        if settings.get("debug_mode", "off") in ["basic", "full"]:
-            print(f"\033[91m[ERROR] Failed to get hotspot status: {e}\033[0m")
-        return jsonify({"error": f"Failed to get hotspot status: {str(e)}"}), 500
-
-def has_compatible_wifi_adapter():
-    try:
-        result = subprocess.run(
-            ["netsh", "wlan", "show", "drivers"],
-            capture_output=True,
-            text=True
-        )
-        output = result.stdout.lower()
-
-        for line in output.splitlines():
-            if "hosted network supported" in line:
-                return "yes" in line
-
-        result = subprocess.run(
-            ["netsh", "interface", "show", "interface"],
-            capture_output=True,
-            text=True
-        )
-        for line in result.stdout.lower().splitlines():
-            if "wireless" in line and "enabled" in line:
-                return True
-
-        return False
-    except Exception as e:
-        print(f"\033[91m[ERROR] Failed to check WiFi adapter: {e}\033[0m")
-        return False
+        return jsonify({'error': f'Failed to configure task: {str(e)}'}), 500
 
 @app.route('/settings/get', methods=['GET'])
 def get_setting():
@@ -180,284 +290,6 @@ def get_setting():
         
     value = settings.get(key, DEFAULT_SETTINGS.get(key, None))
     return jsonify({"key": key, "value": value})
-
-@app.route('/hotspot/enable', methods=['POST'])
-def enable_hotspot():
-    try:
-        if not has_compatible_wifi_adapter():
-            return jsonify({"error": "No compatible WiFi adapter found. Hotspot cannot be enabled."}), 400
-
-        ssid = ""
-        key = ""
-        ghz = "2.4"
-        security = "WPA2"
-        max_devices = 8
-
-        if os.path.exists(HOTSPOT_SETTINGS_FILE):
-            with open(HOTSPOT_SETTINGS_FILE, "r") as f:
-                settings_data = json.load(f)
-                ssid = settings_data.get("name", ssid)
-                key = settings_data.get("password", key)
-                ghz = settings_data.get("ghz", ghz)
-                security = settings_data.get("security", security)
-                max_devices = int(settings_data.get("max_devices", max_devices))
-
-        # Use PowerShell to enable the Mobile Hotspot with our settings
-        ps_command = f'''
-        Add-Type -AssemblyName System.Runtime.WindowsRuntime
-        $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | ? {{ $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' }})[0]
-
-        Function Await($WinRtTask, $ResultType) {{
-            $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
-            $netTask = $asTask.Invoke($null, @($WinRtTask))
-            $netTask.Wait(-1) | Out-Null
-            $netTask.Result
-        }}
-
-        # Get WiFi Hotspot API
-        $connectionProfile = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetInternetConnectionProfile()
-        $tetheringManager = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($connectionProfile)
-
-        # Set configuration
-        $tetheringManager.MaxClientCount = {max_devices}
-        $config = $tetheringManager.GetCurrentAccessPointConfiguration()
-        $config.Ssid = "{ssid}"
-        $config.Passphrase = "{key}"
-        # Try to set GHz and Security if supported (these may not work on all Windows builds)
-        try {{
-            $config.Band = "{ghz}"
-        }} catch {{}}
-        try {{
-            $config.SecurityType = "{security}"
-        }} catch {{}}
-
-        $configTask = $tetheringManager.ConfigureAccessPointAsync($config)
-        Await $configTask ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
-
-        # Start hotspot
-        $task = $tetheringManager.StartTetheringAsync()
-        $result = Await $task ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
-
-        if ($result.Status -eq 0) {{
-            Write-Output "HOTSPOT_ENABLED_SUCCESS"
-        }} else {{
-            Write-Output "HOTSPOT_ENABLED_FAILURE: $($result.Status)"
-        }}
-        '''
-
-        result = subprocess.run(["powershell", "-Command", ps_command], capture_output=True, text=True)
-
-        if settings.get("debug_mode", "off") == "full":
-            print(f"\033[94m[DEBUG] PowerShell output: {result.stdout}\033[0m")
-            if result.stderr:
-                print(f"\033[91m[ERROR] PowerShell error: {result.stderr}\033[0m")
-
-        if "HOTSPOT_ENABLED_SUCCESS" in result.stdout:
-            return jsonify({"message": "Hotspot enabled successfully"})
-        else:
-            error_message = result.stdout if "HOTSPOT_ENABLED_FAILURE" in result.stdout else "Failed to enable hotspot"
-            return jsonify({"error": error_message}), 500
-    except Exception as e:
-        if settings.get("debug_mode", "off") in ["basic", "full"]:
-            print(f"\033[91m[ERROR] Failed to enable hotspot: {e}\033[0m")
-        return jsonify({"error": f"Failed to enable hotspot: {str(e)}"}), 500
-
-@app.route('/hotspot/disable', methods=['POST'])
-def disable_hotspot():
-    try:
-        ps_command = '''
-        Add-Type -AssemblyName System.Runtime.WindowsRuntime
-        $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | ? { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
-        
-        Function Await($WinRtTask, $ResultType) {
-            $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
-            $netTask = $asTask.Invoke($null, @($WinRtTask))
-            $netTask.Wait(-1) | Out-Null
-            $netTask.Result
-        }
-        
-        # Get WiFi Hotspot API
-        $connectionProfile = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetInternetConnectionProfile()
-        $tetheringManager = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($connectionProfile)
-        
-        # Stop hotspot
-        $task = $tetheringManager.StopTetheringAsync()
-        $result = Await $task ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
-        
-        if ($result.Status -eq 0) {
-            Write-Output "HOTSPOT_DISABLED_SUCCESS"
-        } else {
-            Write-Output "HOTSPOT_DISABLED_FAILURE: $($result.Status)"
-        }
-        '''
-        
-        result = subprocess.run(["powershell", "-Command", ps_command], capture_output=True, text=True)
-        
-        if settings.get("debug_mode", "off") == "full":
-            print(f"\033[94m[DEBUG] PowerShell output: {result.stdout}\033[0m")
-            if result.stderr:
-                print(f"\033[91m[ERROR] PowerShell error: {result.stderr}\033[0m")
-        
-        if "HOTSPOT_DISABLED_SUCCESS" in result.stdout:
-            return jsonify({"message": "Hotspot disabled successfully"})
-        else:
-            error_message = result.stdout if "HOTSPOT_DISABLED_FAILURE" in result.stdout else "Failed to disable hotspot"
-            return jsonify({"error": error_message}), 500
-    except Exception as e:
-        if settings.get("debug_mode", "off") in ["basic", "full"]:
-            print(f"\033[91m[ERROR] Failed to disable hotspot: {e}\033[0m")
-        return jsonify({"error": f"Failed to disable hotspot: {str(e)}"}), 500
-
-@app.route('/hotspot/settings', methods=['GET', 'POST'])
-def hotspot_settings():
-    if request.method == 'GET':
-        try:
-            if os.path.exists(HOTSPOT_SETTINGS_FILE):
-                with open(HOTSPOT_SETTINGS_FILE, "r") as f:
-                    settings = json.load(f)
-                # Provide defaults for new fields
-                return jsonify({
-                    "name": settings.get("name", ""),
-                    "ghz": settings.get("ghz", "2.4"),
-                    "security": settings.get("security", "WPA2"),
-                    "max_devices": settings.get("max_devices", 8)
-                })
-            return jsonify({"name": "", "ghz": "2.4", "security": "WPA2", "max_devices": 8})
-        except Exception as e:
-            return jsonify({"error": f"Failed to get hotspot settings: {str(e)}"}), 500
-
-    elif request.method == 'POST':
-        try:
-            data = request.json
-            name = data.get('name', '').strip()
-            password = data.get('password', '').strip()
-            ghz = data.get('ghz', '2.4')
-            security = data.get('security', 'WPA2')
-            max_devices = int(data.get('max_devices', 8))
-
-            # Only require name/password if present in request (for compatibility)
-            if 'name' in data and not name:
-                return jsonify({"error": "Network name is required"}), 400
-            if 'password' in data and len(password) < 8:
-                return jsonify({"error": "Password must be at least 8 characters"}), 400
-
-            # Load existing settings and update
-            settings = {}
-            if os.path.exists(HOTSPOT_SETTINGS_FILE):
-                with open(HOTSPOT_SETTINGS_FILE, "r") as f:
-                    settings = json.load(f)
-            if name:
-                settings['name'] = name
-            if password:
-                settings['password'] = password
-            settings['ghz'] = ghz
-            settings['security'] = security
-            settings['max_devices'] = max_devices
-
-            with open(HOTSPOT_SETTINGS_FILE, "w") as f:
-                json.dump(settings, f, indent=4)
-
-            return jsonify({"message": "Hotspot settings saved successfully"})
-        except Exception as e:
-            return jsonify({"error": f"Failed to save hotspot settings: {str(e)}"}), 500
-
-@app.route('/hotspot/connected-devices', methods=['GET'])
-def get_connected_devices():
-    global HOTSPOT_DEVICE_STATE
-    try:
-        devices = []
-        found_clients = set()
-
-        # Use PowerShell to get connected clients from the Windows Hotspot API
-        ps_command = '''
-        Add-Type -AssemblyName System.Runtime.WindowsRuntime
-        $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | ? { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
-        Function Await($WinRtTask, $ResultType) {
-            $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
-            $netTask = $asTask.Invoke($null, @($WinRtTask))
-            $netTask.Wait(-1) | Out-Null
-            $netTask.Result
-        }
-        $connectionProfile = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetInternetConnectionProfile()
-        $tetheringManager = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($connectionProfile)
-        if ($tetheringManager.TetheringOperationalState -ne 1) {
-            Write-Output "HOTSPOT_INACTIVE"
-            exit
-        }
-        $clients = $tetheringManager.GetTetheringClients()
-        foreach ($client in $clients) {
-            $mac = $client.MacAddress
-            Write-Output "$mac"
-        }
-        '''
-
-        result = subprocess.run(["powershell", "-Command", ps_command], capture_output=True, text=True)
-        lines = result.stdout.strip().splitlines()
-
-        if "HOTSPOT_INACTIVE" in lines:
-            HOTSPOT_DEVICE_STATE.clear()
-            if settings.get("debug_mode", "off") in ["basic", "full"]:
-                print(f"\033[94m[DEBUG] Hotspot is not active\033[0m")
-            return jsonify({"devices": []})
-
-        # Get ARP table for MAC-to-IP mapping
-        arp_result = subprocess.run(["arp", "-a"], capture_output=True, text=True)
-        arp_table = {}
-        for line in arp_result.stdout.splitlines():
-            parts = line.split()
-            if len(parts) >= 2 and re.match(r"(\d{1,3}\.){3}\d{1,3}", parts[0]):
-                ip = parts[0]
-                mac = parts[1].replace("-", ":").lower()
-                arp_table[mac] = ip
-
-        device_num = 1
-        current_macs = set()
-        for line in lines:
-            mac = normalize_mac_address(line.strip())
-            if not mac or mac == "00:00:00:00:00:00" or mac in found_clients:
-                continue
-            found_clients.add(mac)
-            current_macs.add(mac)
-            ip = arp_table.get(mac, "Unknown")
-
-            # Use existing id and connectedSince if present, else create new
-            if mac in HOTSPOT_DEVICE_STATE:
-                device_id = HOTSPOT_DEVICE_STATE[mac]['id']
-                connected_since = HOTSPOT_DEVICE_STATE[mac]['connectedSince']
-            else:
-                device_id = str(uuid.uuid4())
-                connected_since = time.strftime("%Y-%m-%d %H:%M:%S")
-                HOTSPOT_DEVICE_STATE[mac] = {
-                    'id': device_id,
-                    'connectedSince': connected_since
-                }
-
-            devices.append({
-                "id": device_id,
-                "ip": ip,
-                "mac": mac,
-                "name": f"Device {device_num}",
-                "connectedSince": connected_since
-            })
-            device_num += 1
-            if settings.get("debug_mode", "off") in ["basic", "full"]:
-                print(f"\033[94m[DEBUG] Found device MAC={mac}, IP={ip}\033[0m")
-
-        # Remove devices that are no longer connected
-        for mac in list(HOTSPOT_DEVICE_STATE.keys()):
-            if mac not in current_macs:
-                del HOTSPOT_DEVICE_STATE[mac]
-
-        if settings.get("debug_mode", "off") in ["basic", "full"]:
-            print(f"\033[94m[DEBUG] Found {len(devices)} hotspot connected devices\033[0m")
-
-        return jsonify({"devices": devices})
-    except Exception as e:
-        if settings.get("debug_mode", "off") in ["basic", "full"]:
-            print(f"\033[91m[ERROR] Failed to get connected devices: {e}\033[0m")
-            import traceback
-            traceback.print_exc()
-        return jsonify({"error": f"Failed to get connected devices: {str(e)}"}), 500
     
 # Helper function to normalize MAC addresses
 def normalize_mac_address(mac):
@@ -484,28 +316,25 @@ def load_disabled_devices():
 
 @app.route('/misc/download-oui', methods=['GET'])
 def download_oui():
+    import requests
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36" # doesnt work without this
         }
         response = requests.get(OUI_URL, headers=headers, timeout=10)
         response.raise_for_status()
-        oui_file_path = os.path.join(APPDATA_LOCATION, "oui.txt")
-        with open(oui_file_path, "w", encoding="utf-8") as f:
+        with open(OUI_FILE, "w", encoding="utf-8") as f:
             f.write(response.text)
         
-        return jsonify({"message": f"OUI file downloaded successfully to {oui_file_path}."})
+        return jsonify({"message": f"OUI file downloaded successfully to {OUI_FILE}."})
     except Exception as e:
         return jsonify({"error": f"Failed to download OUI file: {str(e)}"}), 500
 
 def load_history(file_path):
-    start_time = time.time()
     if os.path.exists(file_path):
         with open(file_path, "r") as f:
             try:
                 data = json.load(f)
-                end_time = time.time()
-                # print(f"\033[94m[DEBUG] Load history duration: {end_time - start_time:.2f} seconds\033[0m")
                 return data if isinstance(data, list) else []  
             except json.JSONDecodeError:
                 print("\033[91m[ERROR] Failed to decode JSON. Returning empty list.\033[0m")
@@ -622,16 +451,23 @@ def load_settings():
 
 settings, settings_changed = load_settings()
 
+_local_ip_cache = None
 def get_local_ip():
+    global _local_ip_cache
+    if _local_ip_cache:
+        return _local_ip_cache
+    
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
+        # This is a non-blocking operation and doesn't actually send data
         s.connect(("8.8.8.8", 80))
-        local_ip = s.getsockname()[0]
+        _local_ip_cache = s.getsockname()[0]
+    except OSError:
+        # Fallback for offline scenarios
+        _local_ip_cache = "127.0.0.1"
     finally:
         s.close()
-    return local_ip
-
-CREATOR_IP = get_local_ip()
+    return _local_ip_cache
 
 @app.route('/history/json/<filename>', methods=['GET'])
 def get_json_file(filename):
@@ -651,10 +487,11 @@ def save_history(file_path, data):
     with open(file_path, "w") as f:
         json.dump(data, f, indent=4)
 
-def log_scan_history(scan_type, device_count, results):
+def log_scan_history(scan_type, device_count, results, scanning_method):
     history = load_history(SCAN_HISTORY_FILE) or [] 
     scan_id = str(uuid.uuid4())
-    raw_json_path = os.path.join(HISTORY_FOLDER, f"{scan_id}.json")
+    filename = f"{scan_id}.json"
+    raw_json_path = os.path.join(HISTORY_FOLDER, filename)
     with open(raw_json_path, "w") as f:
         json.dump(results, f, indent=4)
     history.append({
@@ -662,7 +499,8 @@ def log_scan_history(scan_type, device_count, results):
         "time": time.strftime("%Y-%m-%d %H:%M:%S"),
         "type": scan_type,
         "deviceCount": device_count,
-        "rawJsonUrl": f"/{raw_json_path.replace(os.sep, '/')}"
+        "rawJsonUrl": f"/history/json/{filename}",
+        "scanning_method": scanning_method
     })
     save_history(SCAN_HISTORY_FILE, history)
 
@@ -766,12 +604,110 @@ def start_cleanup_task():
 @app.route('/network/restart-adapters', methods=['POST'])
 def restart_network_adapters():
     try:
-        if restart_all_adapters():
-            return jsonify({"message": "Network adapters restarted successfully."})
+        data = request.json or {}
+        transport_name = data.get('transport')
+        
+        if transport_name:
+            if restart_adapter_by_transport(transport_name):
+                return jsonify({"message": f"Network adapter with transport {transport_name} restarted successfully."})
+            else:
+                return jsonify({"error": f"Failed to restart adapter with transport {transport_name}."}), 500
         else:
-            return jsonify({"error": "Failed to restart network adapters."}), 500
+            if restart_all_adapters():
+                return jsonify({"message": "All network adapters restarted successfully."})
+            else:
+                return jsonify({"error": "Failed to restart network adapters."}), 500
     except Exception as e:
         return jsonify({"error": f"Failed to restart network adapters: {str(e)}"}), 500
+
+@app.route('/bypass/ignored-adapters', methods=['GET'])
+def get_ignored_adapters():
+    try:
+        return jsonify({"ignored_adapters": IGNORE_LIST})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def restart_adapter_by_transport(transport_name):
+    try:
+        instances = neftcfg_search(transport_name)
+        if not instances:
+            print(f"\033[91m[ERROR] No adapter found with transport name: {transport_name}\033[0m")
+            return False
+        
+        _, sub_name = instances[0]
+        adapter_desc = get_adapter_name(sub_name)
+        
+        if settings.get("debug_mode", "off") == "full":
+            print(f"\033[94m[DEBUG] Found adapter description: {adapter_desc} for transport: {transport_name}\033[0m")
+
+        result = subprocess.run(
+            ["netsh", "interface", "show", "interface"],
+            capture_output=True,
+            text=True
+        )
+        
+        adapter_name = None
+        for line in result.stdout.splitlines():
+            if adapter_desc and adapter_desc in line:
+                parts = line.split()
+                if len(parts) >= 4:
+                    adapter_name = " ".join(parts[3:])
+                    break
+        
+        if not adapter_name:
+            print(f"\033[91m[ERROR] Could not find interface name for adapter: {adapter_desc}\033[0m")
+            return False
+            
+        ip_result = subprocess.run(
+            ["netsh", "interface", "ip", "show", "addresses", adapter_name],
+            capture_output=True,
+            text=True
+        )
+        adapter_ip = None
+        for line in ip_result.stdout.splitlines():
+            if "IP Address" in line:
+                adapter_ip = line.split(":")[1].strip()
+                break
+        
+        if settings.get("debug_mode", "off") == "full":
+            print(f"\033[94m[DEBUG] Found IP address: {adapter_ip} for adapter: {adapter_name}\033[0m")
+        
+        if adapter_ip:
+            print(f"\033[94m[DEBUG] Targeting adapter restart by IP: {adapter_ip}\033[0m")
+            return restart_all_adapters(target_ip=adapter_ip)
+        else:
+            return restart_specific_adapter(adapter_name)
+        
+    except Exception as e:
+        print(f"\033[91m[ERROR] Failed to restart adapter by transport {transport_name}: {e}\033[0m")
+        return False
+
+def restart_specific_adapter(adapter_name):
+    try:
+        print(f"\033[94m[DEBUG] Performing soft restart for adapter: {adapter_name}\033[0m")
+        
+        # Use PowerShell for a faster, soft restart
+        result = subprocess.run(
+            ["powershell", "-Command", f"Restart-NetAdapter -Name '{adapter_name}' -Confirm:$false"],
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        
+        if settings.get("debug_mode", "off") == "full":
+            print(f"\033[94m[DEBUG] PowerShell output: {result.stdout}\033[0m")
+
+        time.sleep(0.2) # Short delay for link negotiation
+        
+        print(f"\033[92m[INFO] Successfully requested restart for adapter: {adapter_name}\033[0m")
+        return True
+        
+    except subprocess.CalledProcessError as e:
+        print(f"\033[91m[ERROR] Failed to restart adapter {adapter_name} using PowerShell: {e.stderr}\033[0m")
+        return False
+    except Exception as e:
+        print(f"\033[91m[ERROR] An unexpected error occurred while restarting adapter {adapter_name}: {e}\033[0m")
+        return False
 
 @app.route('/bypass/revert-mac', methods=['POST'])
 def revert_mac():
@@ -790,7 +726,7 @@ def revert_mac():
 
         instance = instances[0]
         key_path = f"SYSTEM\\ControlSet001\\Control\\Class\\{{4d36e972-e325-11ce-bfc1-08002be10318}}\\{instance[1]}"
-        
+
         # Check if current MAC is already set (to detect hardware MAC)
         original_mac = None
         try:
@@ -820,14 +756,21 @@ def revert_mac():
 
         # Restart the network adapters
         print(f"\033[94m[DEBUG] Restarting network adapter...\033[0m")
-        if restart_all_adapters():
+        if settings.get("accelerated_bypassing", True):
+            if restart_all_adapters():
+                end_time = time.time()
+                elapsed_time = end_time - start_time
+                print(f"\033[94m[DEBUG] Successfully requested MAC address change for: {transport_name}\033[0m")
+                print(f"\033[94m[DEBUG] Revert process completed in {elapsed_time:.2f} seconds\033[0m")
+                return jsonify({"message": f"MAC address change requested successfully."})
+            else:
+                return jsonify({"error": "Failed to restart network adapters"}), 500
+        else:
             end_time = time.time()
             elapsed_time = end_time - start_time
-            print(f"\033[94m[DEBUG] Successfully requested MAC address change for: {transport_name}\033[0m")
-            print(f"\033[94m[DEBUG] Revert process completed in {elapsed_time:.2f} seconds\033[0m")
-            return jsonify({"message": f"MAC address change requested successfully."})
-        else:
-            return jsonify({"error": "Failed to restart network adapters"}), 500
+            print(f"\033[94m[DEBUG] MAC revert requested. Adapter restart skipped by user setting.\033[0m")
+            return jsonify({"message": f"MAC address change requested. Please restart adapter manually."})
+
     except PermissionError:
         return jsonify({"error": "Permission denied. Please run the application as an administrator."}), 403
     except Exception as e:
@@ -836,16 +779,23 @@ def revert_mac():
 @app.route('/bypass/adapters')
 def get_adapters():
     try:
+        show_ignored = request.args.get('show_ignored', 'false').lower() == 'true'
         transport_names_list, driver_desc_list, mp_transport = transport_names()
-        adapters = [
-            {
+        adapters = []
+        
+        for idx, name in enumerate(transport_names_list[:5]):
+            is_ignored = driver_desc_list[idx] in IGNORE_LIST
+            
+            if is_ignored and not show_ignored:
+                continue
+                
+            adapters.append({
                 "transport": name,
                 "description": driver_desc_list[idx],
-                "default": name == mp_transport
-            }
-            for idx, name in enumerate(transport_names_list[:5])
-            if driver_desc_list[idx] not in IGNORE_LIST
-        ]
+                "default": name == mp_transport,
+                "ignored": is_ignored
+            })
+            
         return jsonify(adapters)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -866,6 +816,7 @@ def bypass_change_mac():
     transport = data.get('transport')
     mode = data.get('mode', 'standard')
     use_hardware_rng = data.get('hardware_rng', True)
+    accelerated_bypassing = settings.get("accelerated_bypassing", True)
     
     if not transport:
         return jsonify({"error": "Transport name is required"}), 400
@@ -875,7 +826,7 @@ def bypass_change_mac():
     if not instances:
         return jsonify({"error": "No network adapter found with this transport name"}), 404
     
-    # Use the first instance found - note _ prefix for unused variable
+    # Use the first instance found
     _, sub_name = instances[0]
     
     # Get current MAC before changing
@@ -886,13 +837,12 @@ def bypass_change_mac():
             try:
                 current_mac = winreg.QueryValueEx(key, 'NetworkAddress')[0]
             except FileNotFoundError:
-                pass  # MAC address not previously set
+                pass
     except Exception as e:
         app.logger.error(f"Error getting current MAC: {str(e)}")
     
     # Change the MAC address
-    new_mac = init_bypass(sub_name, mac_mode=mode, use_hardware_rng=use_hardware_rng)
-
+    new_mac = init_bypass(sub_name, mac_mode=mode, use_hardware_rng=use_hardware_rng, restart_adapters=accelerated_bypassing)
     if new_mac:
         note = "MAC address changed successfully"
         # Log the change to history with mac_mode
@@ -914,17 +864,19 @@ def bypass_change_mac():
     else:
         return jsonify({
             "error": "Failed to change MAC address"
-        }), 500
+        }, 500)
 
 @app.before_request
 def restrict_access():
     if settings.get("hide_website", True):  
         client_ip = request.remote_addr
-        if client_ip not in [CREATOR_IP, "127.0.0.1"]:
+        if client_ip not in [get_local_ip(), "127.0.0.1"]:
             return redirect("https://www.google.com")
 
 @app.route('/updater/download', methods=['POST'])
 def download_update():
+    import requests
+    import shutil
     try:
         data = request.json
         download_url = data.get('url')
@@ -1007,6 +959,8 @@ def handle_exception(e):
 
 @app.route('/updater/changelog', methods=['GET'])
 def get_changelog():
+    import requests
+    import base64
     try:
         owner = "countervolts"
         repo = "network-related-thing"
@@ -1032,7 +986,7 @@ def get_changelog():
         for line in content.split('\n'):
             if line.startswith('# Changelog'):
                 continue
-                
+            
             # Version headers
             elif line.startswith('## [v'):
                 # Extract version and date
@@ -1083,6 +1037,8 @@ def get_changelog():
 
 @app.route('/system/info')
 def get_system_info():
+    import psutil
+    import urllib.request
     try:
         # Get network info
         internal_ip = get_local_ip()
@@ -1105,24 +1061,64 @@ def get_system_info():
         
         # Get CPU info with improved formatting and vendor info
         cpu_info = platform.processor()
-        cpu_vendor = ""
-        if "genuineintel" in cpu_info.lower():
-            cpu_vendor = " (GenuineIntel)"
-        if "authenticamd" in cpu_info.lower():
-            cpu_vendor = " (AuthenticAMD)"
-        elif "" in cpu_info.lower():
-            cpu_vendor = " (er wtf?)"
+        cpu_threads = os.cpu_count() or 'N/A'
             
         try:
-            cpu_output = subprocess.check_output("wmic cpu get name", shell=True).decode('utf-8').strip()
-            cpu_lines = cpu_output.split('\n')
-            if len(cpu_lines) > 1:
-                cpu_info = cpu_lines[1].strip() + cpu_vendor
+            # --- CPU Name Gathering ---
+            reg_cpu_name = None
+            wmic_name = None
+
+            # 1. Try reading from the registry
+            try:
+                key_path = r"HARDWARE\DESCRIPTION\System\CentralProcessor\0"
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path) as key:
+                    reg_cpu_name, _ = winreg.QueryValueEx(key, "ProcessorNameString")
+                    reg_cpu_name = reg_cpu_name.strip()
+            except Exception:
+                pass
+
+            # 2. Try WMIC for CPU name
+            try:
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                cpu_output = subprocess.check_output("wmic cpu get name", shell=True, startupinfo=startupinfo).decode('utf-8').strip()
+                cpu_lines = cpu_output.split('\n')
+                if len(cpu_lines) > 1:
+                    wmic_name = cpu_lines[1].strip()
+            except Exception:
+                pass
+
+            # --- Selection Logic ---
+            cpu_name = reg_cpu_name  # Start with registry result
+
+            # Fallback to WMIC if registry failed or is empty
+            if not cpu_name:
+                if wmic_name and not ("Family" in wmic_name and "Model" in wmic_name and "Stepping" in wmic_name):
+                    cpu_name = wmic_name
+            
+            # Get CPU vendor
+            cpu_vendor = "Unknown"
+            try:
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                vendor_output = subprocess.check_output("wmic cpu get Manufacturer", shell=True, startupinfo=startupinfo).decode('utf-8').strip()
+                vendor_lines = vendor_output.split('\n')
+                if len(vendor_lines) > 1:
+                    cpu_vendor = vendor_lines[1].strip()
+            except Exception:
+                pass
+            
+            # Update cpu_info if a better name was found
+            if cpu_name:
+                cpu_info = f"{cpu_name} ({cpu_vendor})"
                 
-            gpu_output = subprocess.check_output("wmic path win32_VideoController get name", shell=True).decode('utf-8').strip()
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            gpu_output = subprocess.check_output("wmic path win32_VideoController get name", shell=True, startupinfo=startupinfo).decode('utf-8').strip()
             gpu_lines = gpu_output.split('\n')
             gpu_info = "Unknown"
             for line in gpu_lines[1:]:
+
                 name = line.strip()
                 if name and "Microsoft" not in name and not name.startswith("Standard"):
                     gpu_info = name
@@ -1130,6 +1126,7 @@ def get_system_info():
         except Exception as hw_err:
             print(f"Hardware detection error: {hw_err}")
             try:
+                import GPUtil
                 gpus = GPUtil.getGPUs()
                 if gpus:
                     gpu_info = gpus[0].name
@@ -1144,7 +1141,6 @@ def get_system_info():
         for partition in psutil.disk_partitions():
             try:
                 if platform.system() == 'Windows' and 'cdrom' in partition.opts:
-                    # Skip CD/DVD drives
                     continue
                 usage = psutil.disk_usage(partition.mountpoint)
                 total_storage += usage.total
@@ -1161,13 +1157,14 @@ def get_system_info():
             "cpu": cpu_info,
             "gpu": gpu_info,
             "memory": memory_info,
-            "storage": storage_info
+            "storage": storage_info,
+            "cpu_threads": cpu_threads
         })
     except Exception as e:
         print(f"\033[91m[ERROR] Failed to get system info: {e}\033[0m")
         return jsonify({
             "error": "Failed to get system info"
-        }), 500
+        }, 500)
 
 @app.route('/statistics', methods=['GET'])
 def get_statistics():
@@ -1227,12 +1224,57 @@ def get_scan_history():
 def delete_scan_history(scan_id):
     history = load_history(SCAN_HISTORY_FILE)
     updated_history = [item for item in history if item["id"] != scan_id]
+    
+    # Also delete the raw JSON file
+    scan_to_delete = next((item for item in history if item["id"] == scan_id), None)
+    if scan_to_delete:
+        filename = f"{scan_id}.json"
+        raw_json_path = os.path.join(HISTORY_FOLDER, filename)
+        if os.path.exists(raw_json_path):
+            os.remove(raw_json_path)
+
     save_history(SCAN_HISTORY_FILE, updated_history)
     return jsonify({"message": "Scan history deleted successfully."})
+
+@app.route('/history/scans/delete-batch', methods=['POST'])
+def delete_scan_history_batch():
+    data = request.get_json()
+    ids_to_delete = data.get('ids', [])
+    if not ids_to_delete:
+        return jsonify({"error": "No IDs provided"}), 400
+
+    history = load_history(SCAN_HISTORY_FILE)
+    
+    scans_to_delete = [item for item in history if item["id"] in ids_to_delete]
+    updated_history = [item for item in history if item["id"] not in ids_to_delete]
+
+    for scan in scans_to_delete:
+        filename = f"{scan['id']}.json"
+        raw_json_path = os.path.join(HISTORY_FOLDER, filename)
+        if os.path.exists(raw_json_path):
+            try:
+                os.remove(raw_json_path)
+            except OSError as e:
+                print(f"Error deleting file {raw_json_path}: {e}")
+
+
+    save_history(SCAN_HISTORY_FILE, updated_history)
+    return jsonify({"message": f"{len(scans_to_delete)} scan histories deleted successfully."})
 
 @app.route('/history/bypasses', methods=['GET'])
 def get_bypass_history():
     return jsonify(load_history(BYPASS_HISTORY_FILE))
+
+@app.route('/scan/hostname', methods=['GET'])
+def get_hostname_route():
+    ip = request.args.get('ip')
+    if not ip:
+        return jsonify({"error": "IP address is required"}), 400
+    
+    from src.ping import get_hostname
+    hostname = get_hostname(ip)
+    
+    return jsonify({"ip": ip, "hostname": hostname})
 
 @app.route('/scan/basic')
 def basic_scan():
@@ -1242,7 +1284,17 @@ def basic_scan():
         if settings.get("debug_mode", "off") in ["basic", "full"]:
             print(f"\033[94m[DEBUG] Performing basic scan on subnet: {subnet}\033[0m")
         
-        results = scan_network(subnet=subnet, scan_hostname=False, scan_vendor=False) or []
+        scanning_method = settings.get("scanning_method", "divide_and_conquer")
+        parallel_scans = settings.get("parallel_scans", True)
+        multiplier = int(settings.get("override_multiplier", 2))
+        results = scan_network(
+            subnet=subnet, 
+            scan_hostname=False, 
+            scan_vendor=False,
+            scanning_method=scanning_method,
+            parallel_scans=parallel_scans,
+            parallel_multiplier=multiplier
+        ) or []
         local_ip = get_local_ip()
         local_mac = get_mac_address()
         for result in results:
@@ -1254,7 +1306,7 @@ def basic_scan():
             result["hostname"] = "Skipped"
             result["vendor"] = "Skipped"
 
-        log_scan_history("Basic", len(results), results)
+        log_scan_history("Basic", len(results), results, scanning_method)
         print(f"\033[92m[INFO] Basic Scan completed. {len(results)} devices found.\033[0m")
         
         end_time = time.time()  
@@ -1277,21 +1329,24 @@ def clear_console():
 @app.route('/scan/full')
 def full_scan():
     try:
-        start_time = time.time()  
+        start_time = time.time()
         subnet = get_subnet()
         if settings.get("debug_mode", "off") in ["basic", "full"]:
             print(f"\033[94m[DEBUG] Performing full scan on subnet: {subnet}\033[0m")
+
+        oui_file_missing = not os.path.exists(OUI_FILE)
         
-        oui_file_path = os.path.join(APPDATA_LOCATION, "oui.txt")
-        oui_file_missing = not os.path.exists(oui_file_path)
-        
-        if oui_file_missing:
-            print("\033[91m[WARNING] OUI file not found in AppData/ayosbypasser\033[0m")
-            results = scan_network(subnet=subnet, scan_hostname=True, scan_vendor=False)
-            for device in results:
-                device["vendor"] = "No oui.txt"
-        else:
-            results = scan_network(subnet=subnet, scan_hostname=True, scan_vendor=True)
+        scanning_method = settings.get("scanning_method", "divide_and_conquer")
+        parallel_scans = settings.get("parallel_scans", True)
+        multiplier = int(settings.get("override_multiplier", 2))
+        results = scan_network(
+            subnet=subnet,
+            scan_hostname=True,
+            scan_vendor=not oui_file_missing,
+            scanning_method=scanning_method,
+            parallel_scans=parallel_scans,
+            parallel_multiplier=multiplier
+        )
         local_ip = get_local_ip()
         local_mac = get_mac_address()  
         for result in results:
@@ -1299,7 +1354,7 @@ def full_scan():
                 result["mac"] = local_mac
                 break
         
-        log_scan_history("Full", len(results), results)
+        log_scan_history("Full", len(results), results, scanning_method)
         print(f"\033[92m[INFO] Full Scan completed. {len(results)} devices found.\033[0m")
         
         end_time = time.time() 
@@ -1396,27 +1451,32 @@ def log_response(response):
         app.logger.debug(f"Response: {response.status}")
     return response
 
-@app.route('/settings', methods=['GET', 'POST'])
-def manage_settings():
+@app.route('/settings', methods=['GET'])
+def get_settings():
     global settings
-    if request.method == 'GET':
-        return jsonify(settings)
-    elif request.method == 'POST':
-        updated_settings = request.json
-        # Ensure preserve_hotspot is always present
-        if "preserve_hotspot" not in updated_settings:
-            updated_settings["preserve_hotspot"] = False
-        with open(SETTINGS_FILE, "w") as f:
-            json.dump(updated_settings, f, indent=4)
-        for key, value in updated_settings.items():
-            if settings.get(key) != value:
-                print(f"\033[94m[INFO] Setting changed: {key}={value}\033[0m")
-        settings = updated_settings
+    settings_with_cpu = settings.copy()
+    settings_with_cpu['cpu_thread_count'] = os.cpu_count() or 'N/A'
+    return jsonify(settings_with_cpu)
 
-        # Update logging level dynamically if debug mode changes
-        update_logging_level(updated_settings.get("debug_mode", "off"))
+@app.route('/settings', methods=['POST'])
+def update_settings():
+    global settings
+    updated_settings = request.json
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(updated_settings, f, indent=4)
+    
+    # Log changes by comparing with the old settings
+    for key, value in updated_settings.items():
+        if settings.get(key) != value:
+            print(f"\033[94m[INFO] Setting changed: {key}={value}\033[0m")
 
-        return jsonify({"message": "Settings updated successfully"})
+    # Update the global settings variable in memory to match the file
+    settings = updated_settings.copy()
+
+    # Update logging level dynamically if debug mode changes
+    update_logging_level(updated_settings.get("debug_mode", "off"))
+
+    return jsonify({"message": "Settings updated successfully"})
 
 @app.route('/exit', methods=['POST'])
 def exit_server():
@@ -1462,7 +1522,6 @@ def server_start():
     return jsonify({"message": "Server started. Clear disabled devices."})
 
 def graceful_shutdown(_signal_received, _frame):
-    # Combine shutdown prints into a single statement
     shutdown_msgs = []
     shutdown_msgs.append("\033[93m[INFO] Graceful shutdown initiated...\033[0m")
     global DISABLED_DEVICES
@@ -1482,48 +1541,6 @@ def graceful_shutdown(_signal_received, _frame):
     # Clear the disabled devices list
     DISABLED_DEVICES = []
     shutdown_msgs.append("\033[92m[INFO] All disabled devices have been re-enabled.\033[0m")
-
-    # Stop hotspot if preserve_hotspot is False
-    if not settings.get("preserve_hotspot", False):
-        try:
-            # Check if hotspot is running before stopping
-            ps_status = '''
-            Add-Type -AssemblyName System.Runtime.WindowsRuntime
-            $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | ? { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
-            Function Await($WinRtTask, $ResultType) {
-                $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
-                $netTask = $asTask.Invoke($null, @($WinRtTask))
-                $netTask.Wait(-1) | Out-Null
-                $netTask.Result
-            }
-            $connectionProfile = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetInternetConnectionProfile()
-            $tetheringManager = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($connectionProfile)
-            if ($tetheringManager.TetheringOperationalState -eq 1) {
-                Write-Output "HOTSPOT_ACTIVE"
-            } else {
-                Write-Output "HOTSPOT_INACTIVE"
-            }
-            '''
-            result = subprocess.run(["powershell", "-Command", ps_status], capture_output=True, text=True)
-            if "HOTSPOT_ACTIVE" in result.stdout:
-                shutdown_msgs.append("\033[93m[INFO] Stopping hotspot due to shutdown (preserve_hotspot is off)...\033[0m")
-                subprocess.run(["powershell", "-Command", '''
-                    Add-Type -AssemblyName System.Runtime.WindowsRuntime
-                    $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | ? { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
-                    Function Await($WinRtTask, $ResultType) {
-                        $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
-                        $netTask = $asTask.Invoke($null, @($WinRtTask))
-                        $netTask.Wait(-1) | Out-Null
-                        $netTask.Result
-                    }
-                    $connectionProfile = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetInternetConnectionProfile()
-                    $tetheringManager = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($connectionProfile)
-                    $task = $tetheringManager.StopTetheringAsync()
-                    $result = Await $task ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
-                '''], capture_output=True, text=True)
-                shutdown_msgs.append("\033[92m[INFO] Hotspot stopped during shutdown.\033[0m")
-        except Exception as e:
-            print(f"\033[91m[ERROR] Failed to stop hotspot during shutdown: {e}\033[0m")
 
     shutdown_msgs.append("\033[92m[INFO] Server shutting down gracefully.\033[0m")
     print('\n'.join(shutdown_msgs))
@@ -1557,6 +1574,7 @@ def stream_ping():
                 
                 if not ping_data:
                     ping_manager.request_ping(ip)
+
                     time.sleep(ping_interval)
                     continue  
                 else:
@@ -1599,9 +1617,10 @@ def stop_ping_stream():
 def cleanup_abandoned_ping_connections():
     with active_ping_lock:
         current_time = time.time()
+
         expired_clients = [
             client_id for client_id, data in active_ping_connections.items()
-            if current_time - data['last_active'] > 30  # 30 seconds timeout
+            if current_time - data['last_active'] > 30   # 30 seconds timeout
         ]
         
         for client_id in expired_clients:
@@ -1660,21 +1679,10 @@ def diagnose():
     
     return jsonify(result)
 
-@app.route('/monitor/adapters', methods=['GET'])
-def get_network_adapters():
-    try:
-        adapters = connection_monitor.get_adapters()
-        return jsonify(adapters)
-    except Exception as e:
-        if settings.get("debug_mode", "off") in ["basic", "full"]:
-            print(f"\033[91m[ERROR] Failed to get network adapters: {e}\033[0m")
-        return jsonify({"error": str(e)}), 500
-
 @app.route('/monitor/connections', methods=['GET'])
 def get_outbound_connections():
     try:
-        adapter_filter = request.args.get('adapter', 'all')
-        connections = connection_monitor.get_connections(adapter_filter)
+        connections = connection_monitor.get_connections()
         return jsonify({"connections": connections})
     except Exception as e:
         if settings.get("debug_mode", "off") in ["basic", "full"]:
@@ -1695,12 +1703,68 @@ def whois_lookup():
             print(f"\033[91m[ERROR] Failed to perform WHOIS lookup: {e}\033[0m")
         return jsonify({"success": False, "error": str(e)}), 500
 
-if __name__ == '__main__':
-    if settings.get("run_as_admin", False) and not has_perms():
-        print("\033[93m[INFO] Restarting with administrative privileges...\033[0m")
-        permission_giver()
+@app.route('/settings/reset', methods=['POST'])
+def reset_settings():
+    global settings
+    try:
+        # Overwrite the settings file with the defaults
+        with open(SETTINGS_FILE, "w") as f:
+            json.dump(DEFAULT_SETTINGS, f, indent=4)
+        
+        # Update the global settings variable
+        settings = DEFAULT_SETTINGS.copy()
+        
+        print("\033[93m[INFO] All settings have been reset to their default values.\033[0m")
+        
+        # Update logging to reflect default debug mode
+        update_logging_level(settings.get("debug_mode", "off"))
 
-    os.system('cls')    
+        return jsonify({"message": "Settings have been reset to default."})
+    except Exception as e:
+        print(f"\033[91m[ERROR] Failed to reset settings: {e}\033[0m")
+        return jsonify({"error": "Failed to reset settings."}), 500
+
+@app.route('/monitor/deep-dive', methods=['GET'])
+def deep_dive_lookup():
+    try:
+        ip = request.args.get('ip')
+        if not ip:
+            return jsonify({"success": False, "error": "No IP address provided"}), 400
+        
+        result = connection_monitor.perform_deep_dive(ip)
+        return jsonify({"success": True, "result": result})
+    except Exception as e:
+        if settings.get("debug_mode", "off") in ["basic", "full"]:
+            print(f"\033[91m[ERROR] Failed to perform deep dive: {e}\033[0m")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/client-loaded', methods=['POST'])
+def client_loaded():
+    global _CLIENT_LOADED
+    if not _CLIENT_LOADED:
+        _CLIENT_LOADED = True
+        end_time = time.time()
+        elapsed = end_time - START_TIME
+        print(f"\n\033[92m[PERF] Client fully loaded in {elapsed:.2f} seconds.\033[0m\n")
+    return jsonify({"status": "ok"}), 200
+        
+def find_available_port(ports_to_try):
+    for port in ports_to_try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(('127.0.0.1', port))
+                return port
+            except OSError:
+                print(f"\033[93m[INFO] Port {port} is in use, trying next...\033[0m")
+                continue
+    return None
+
+if __name__ == '__main__':
+    os.system('cls')
+
+    if settings.get("run_as_admin") and not is_admin():
+        print("\033[93m[INFO] Setting requires admin privileges. Restarting...\033[0m")
+        permission_giver()
     
     if settings.get("debug_mode", "off") == "basic":
         logging.getLogger('werkzeug').setLevel(logging.INFO)  
@@ -1713,9 +1777,15 @@ if __name__ == '__main__':
         cli = sys.modules['flask.cli']
         cli.show_server_banner = lambda *_: None
 
-    # Hardcoded to always use port 8080
-    PORT = 8080
-    print(f"\033[92m[INFO] Server running at http://{CREATOR_IP}:{PORT}\033[0m")
+    # List of ports to try in order
+    PORTS_TO_TRY = [8080, 8090, 5000, 5001, 8001]
+    PORT = find_available_port(PORTS_TO_TRY)
+
+    if PORT is None:
+        print("\033[91m[ERROR] All preferred ports are in use. Please free up a port and restart.\033[0m")
+        sys.exit(1)
+
+    print(f"\033[92m[INFO] Server running at http://{get_local_ip()}:{PORT}\033[0m")
 
     if settings_changed:
         for key in DEFAULT_SETTINGS:
@@ -1723,16 +1793,29 @@ if __name__ == '__main__':
                 print(f"\033[93m[INFO] New setting detected: '{key}' (added to settings dir)\033[0m")
 
     if settings["auto_open_page"] and not is_running_in_electron():
-        try:
-            # Updated to use port 8080
-            subprocess.Popen(['start', f'http://localhost:{PORT}'], shell=True)
-        except Exception as e:
-            print(f"\033[91m[ERROR] Failed to open browser: {e}\033[0m")
+        def open_browser():
+            time.sleep(0.2)
+            try:
+                subprocess.Popen(['start', f'http://localhost:{PORT}'], shell=True)
+            except Exception as e:
+                print(f"\033[91m[ERROR] Failed to open browser: {e}\033[0m")
+        threading.Thread(target=open_browser, daemon=True).start()
 
     try:
-        # Directly run on 127.0.0.1 (localhost) with port 8080
-        print(f"\033[93m[INFO] Starting server on localhost:{PORT}...\033[0m")
-        app.run(host='127.0.0.1', port=PORT, threaded=True)
+        backend = settings.get("server_backend", "waitress")
+        
+        if backend == "hypercorn":
+            print(f"\033[93m[INFO] Starting with Hypercorn server on localhost:{PORT}...\033[0m")
+            config = Config()
+            config.bind = [f"127.0.0.1:{PORT}"]
+            asyncio.run(hypercorn_serve(app, config))
+        elif backend == "none":
+            print(f"\033[93m[INFO] Starting with Flask's default development server on localhost:{PORT}...\033[0m")
+            app.run(host='127.0.0.1', port=PORT)
+        else: 
+            print(f"\033[93m[INFO] Starting with Waitress server on localhost:{PORT}...\033[0m")
+            serve(app, host='127.0.0.1', port=PORT)
+
     except Exception as e:
         print(f"\033[91m[ERROR] Failed to start server: {e}\033[0m")
-        print("\033[93m[INFO] Try running as administrator or check if port 8080 is already in use.\033[0m")
+        print(f"\033[93m[INFO] Try running as administrator or check if port {PORT} is already in use.\033[0m")

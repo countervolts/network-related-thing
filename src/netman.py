@@ -13,28 +13,28 @@ class GarpSpoofer:
     def __init__(self):
         self.gateway_ip = get_default_gateway()
         self.mac_cache = {} 
-        self.targets = {}  # Initialize targets dictionary first
+        self.targets = {}
         self.lock = Lock()
         self.active = True
         conf.verb = 0
         
         self.gateway_mac = self.resolve_mac(self.gateway_ip)
 
+    def start(self):
+        """Starts the monitoring and spoofing threads."""
         Thread(target=self.monitor_arp, daemon=True).start()
         Thread(target=self.spoof_engine, daemon=True).start()
 
     def resolve_mac(self, ip):
-        now = time.time()  # Use time.time() instead of time()
-        cached = self.mac_cache.get(ip)
-        if cached and (now - cached['time'] < 30):  
-            return cached['mac']
+        if ip in self.mac_cache:
+            return self.mac_cache[ip]
         
         try:
             ans, _ = srp(Ether(dst="ff:ff:ff:ff:ff:ff")/ARP(pdst=ip), 
                         timeout=2, verbose=0)
             if ans:
                 mac = ans[0][1].hwsrc
-                self.mac_cache[ip] = {'mac': mac, 'time': now}
+                self.mac_cache[ip] = mac
                 return mac
         except Exception as e:
             print(f"MAC resolution failed for {ip}: {e}")
@@ -151,7 +151,6 @@ class PingManager:
         self.ping_thread = None
         self.ping_interval = 1
         self.is_running = False
-        self.start_background_thread()
     
     def start_background_thread(self):
         if self.ping_thread is None or not self.ping_thread.is_alive():

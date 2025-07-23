@@ -2,15 +2,14 @@
 const { app, BrowserWindow, Menu } = require('electron');
 const { spawn, exec } = require('child_process');
 const path = require('path');
-const os = require('os'); // Add this line
-// Removed unused fs require
+const os = require('os');
 let pyProc = null;
 let mainWindow = null;
+let serverPort = null;
 
-// Enable fluent scrollbars - must be done before app ready
 app.commandLine.appendSwitch('enable-features', 'FluentScrollbar,FluentOverlayScrollbar');
 
-// Custom scrollbar CSS to make it more visible
+// scrollbar css
 const scrollbarCSS = `
 ::-webkit-scrollbar {
   width: 10px;
@@ -30,7 +29,7 @@ const scrollbarCSS = `
 `;
 
 function startPythonServer() {
-  // Determine if we're running in development or production mode
+  // dev or prod?
   let serverPath;
   let serverArgs = [];
   
@@ -58,10 +57,9 @@ function startPythonServer() {
     
     pyProc = spawn(serverPath, ['--electron-wrapper'], options);
     
-    // Don't wait for this process when app exits
     pyProc.unref();
   } else {
-    // Dev mode remains unchanged
+    // dev mode 
     serverPath = 'python';
     serverArgs = [path.join(__dirname, '..', 'server.py')];
     console.log('Running in development mode, server path:', path.join(__dirname, '..', 'server.py'));
@@ -69,19 +67,21 @@ function startPythonServer() {
     pyProc = spawn(serverPath, serverArgs, {
       windowsHide: true,
       stdio: 'pipe',
-      env: { ...process.env, RUNNING_IN_ELECTRON: '1' } // Set environment variable for Electron detection
+      env: { ...process.env, RUNNING_IN_ELECTRON: '1' } 
     });
   }
   
-  // Log any output from the server
   pyProc.stdout.on('data', (data) => {
-    console.log(`Python server: ${data.toString()}`);
-    
-    // Check for server ready message
-    if (data.toString().includes('Server running at')) {
-      if (mainWindow) {
-        // Load the URL once the server is ready
-        mainWindow.loadURL('http://localhost:8080');
+    const output = data.toString();
+    console.log(`Python server: ${output}`);
+    const match = output.match(/Starting server on localhost:(\d+)/);
+    if (match && match[1]) {
+      if (!serverPort) { 
+        serverPort = match[1];
+        console.log(`Detected Python server on port: ${serverPort}`);
+        if (mainWindow) {
+          mainWindow.loadURL(`http://localhost:${serverPort}`);
+        }
       }
     }
   });
@@ -103,26 +103,22 @@ function startPythonServer() {
 }
 
 function createWindow() {
-  // Create the browser window
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    backgroundColor: '#181818', // Dark background color to match your app
+    backgroundColor: '#181818',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      devTools: !app.isPackaged // Only enable DevTools in development
+      devTools: !app.isPackaged
     },
     icon: path.join(__dirname, '..', 'favicon.ico'),
-    // Remove the menu bar
     autoHideMenuBar: true,
     frame: true
   });
 
-  // Remove the application menu completely
   Menu.setApplicationMenu(null);
 
-  // Show a loading screen while the server starts
   mainWindow.loadURL(`data:text/html;charset=utf-8,
     <html>
     <head>
@@ -170,17 +166,9 @@ function createWindow() {
     </html>
   `);
 
-  // Start Python server
   startPythonServer();
-  
-  // Fallback: If the server ready message isn't detected, load after a delay
-  setTimeout(() => {
-    if (mainWindow) {
-      mainWindow.loadURL('http://localhost:8080')
-    }
-  }, 3000);
 
-  // Inject custom scrollbar CSS after page loads
+  // Injecting scrollbar css
   mainWindow.webContents.on('did-finish-load', () => {
     mainWindow.webContents.insertCSS(scrollbarCSS)
       .then(() => console.log('Custom scrollbar CSS injected'))
@@ -191,50 +179,40 @@ function createWindow() {
     mainWindow = null;
   });
   
-  // Open DevTools on start in development mode
+  // devtools in dev mode
   if (!app.isPackaged) {
     mainWindow.webContents.openDevTools();
   }
 }
 
-// Create app window when Electron is ready
 app.on('ready', createWindow);
 
-// Quit when all windows are closed
-app.on('window-all-closed', () => {
-  // Kill Python server on app exit
-  if (pyProc !== null) {
-    // Fix the Content-Type error by adding proper headers and body
-    fetch('http://localhost:8080/exit', { 
+app.on('will-quit', (event) => {
+  if (pyProc !== null && serverPort) { 
+    event.preventDefault(); 
+
+    fetch(`http://localhost:${serverPort}/exit`, { 
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({}) // Empty JSON object
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
     })
-      .catch(() => {
-        console.log('Could not send exit request to server');
-      })
-      .finally(() => {
-        // Force kill all server.exe processes after a short delay
-        setTimeout(() => {
-          exec('taskkill /F /IM server.exe', (err) => {
+    .catch(() => console.log('Could not send graceful exit request to server. Forcing shutdown.'))
+    .finally(() => {
+      // Force kill the process after a short delay to ensure cleanup
+      setTimeout(() => {
+        if (os.platform() === 'win32') {
+          exec(`taskkill /F /IM server.exe /T`, (err) => {
             if (err) {
-              console.log('Could not kill all server.exe processes:', err.message);
+              console.error('Failed to kill server.exe process:', err.message);
             } else {
-              console.log('All server.exe processes killed.');
+              console.log('Server process killed.');
             }
-            if (pyProc !== null) {
-              pyProc.kill();
-              pyProc = null;
-            }
-            app.quit();
+            pyProc = null;
+            app.quit(); 
           });
-        }, 500);
-      });
-  } else {
-    // Still try to kill any stray server.exe
-    exec('taskkill /F /IM server.exe', () => app.quit());
+        }
+      }, 500);
+    });
   }
 });
 

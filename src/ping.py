@@ -1,11 +1,11 @@
-import platform
-import concurrent.futures
-import time
 import socket
-import os
-import sys
-import logging
 import subprocess
+import platform
+import time
+import os
+from getmac import get_mac_address
+import logging
+import concurrent.futures
 from datetime import datetime
 from functools import lru_cache
 
@@ -81,17 +81,43 @@ hostname_counters = {
 @lru_cache(maxsize=128)
 def get_hostname(ip, timeout=1):
     global hostname_counters
-    hostname = None
+    # 1. Standard DNS Lookup (Reverse PTR)
     try:
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(socket.gethostbyaddr, ip)
-            hostname = future.result(timeout=timeout)[0]
-            hostname_counters["gethostbyaddr"] += 1
-            return hostname
-    except (socket.herror, socket.gaierror, concurrent.futures.TimeoutError, OSError):
-        pass
+        hostname, _, _ = socket.gethostbyaddr(ip)
+        hostname_counters["gethostbyaddr"] += 1
+        return hostname
+    except (socket.herror, socket.gaierror, OSError):
+        pass # Failed, try next method
 
-    # If no method succeeded
+    # 2. NetBIOS Name Query (more effective on local networks)
+    try:
+        # Construct NetBIOS Name Service request
+        # Transaction ID (2 bytes), Flags (2 bytes), Questions (2 bytes), etc.
+        trans_id = os.urandom(2)
+        query = trans_id + b'\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00'
+        # Name to query: '*' (encoded) + null terminator
+        query += b'\x20\x43\x4b\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x00'
+        # Query Type: NBSTAT (33), Query Class: IN (1)
+        query += b'\x00\x21\x00\x01'
+
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.settimeout(timeout)
+            s.sendto(query, (ip, 137))
+            data, _ = s.recvfrom(1024)
+            
+            # The name is in the response after a certain offset
+            # This is a simplified parser for the most common response format
+            if len(data) > 56:
+                # Find the first name in the list of names
+                name_bytes = data[57:72].strip()
+                hostname = name_bytes.decode('latin-1', errors='ignore').strip()
+                if hostname:
+                    hostname_counters["netbios"] += 1
+                    return hostname
+    except (socket.timeout, ConnectionResetError, OSError):
+        pass # Failed, move on
+
+    # If all methods failed
     hostname_counters["unknown"] += 1
     return 'Unknown'
 
@@ -156,8 +182,9 @@ def resolve_hostnames(ips):
 
     return hostnames
 
-def scan_network(subnet, scan_hostname=False, scan_vendor=False):
+def scan_network(subnet, scan_hostname=False, scan_vendor=False, scanning_method="divide_and_conquer", parallel_scans=True, parallel_multiplier=2):
     start_time = time.time()
+    print(f"\033[94m[DEBUG] Scanning with method: {scanning_method}, Parallel scans: {'Enabled' if parallel_scans else 'Disabled'}\033[0m")
     online_devices = []
     local_ips = get_local_ips()
     gateway = get_default_gateway()
@@ -169,35 +196,32 @@ def scan_network(subnet, scan_hostname=False, scan_vendor=False):
     ips = [f"{base_ip}.{i}" for i in range(1, 255)]
     
     # Optimize: Prioritize common IP addresses first (gateways, etc.)
-    priority_ips = [f"{base_ip}.1", f"{base_ip}.254"]
-    common_ranges = [i for i in range(1, 20)]
+    if scanning_method == "divide_and_conquer":
+        priority_ips = [f"{base_ip}.1", f"{base_ip}.254"]
+        common_ranges = [i for i in range(1, 20)]
+        
+        # Reorder IPs to check likely candidates first
+        for ip_suffix in priority_ips + common_ranges:
+            target_ip = f"{base_ip}.{ip_suffix}"
+            if target_ip in ips:
+                ips.remove(target_ip)
+                ips.insert(0, target_ip)
     
-    # Reorder IPs to check likely candidates first
-    for ip_suffix in priority_ips + common_ranges:
-        target_ip = f"{base_ip}.{ip_suffix}"
-        if target_ip in ips:
-            ips.remove(target_ip)
-            ips.insert(0, target_ip)
-    
-    def ping_ips(ip_list):
-        results = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
-            futures = {executor.submit(ping, ip): ip for ip in ip_list}
-            for future in concurrent.futures.as_completed(futures):
+    if parallel_scans:
+        max_workers = (os.cpu_count() or 4) * parallel_multiplier
+        print(f"\033[94m[DEBUG] Starting ping scan with {max_workers} threads.\033[0m")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_ip = {executor.submit(ping, ip): ip for ip in ips}
+            for future in concurrent.futures.as_completed(future_to_ip):
                 ip, status = future.result()
                 if status:
-                    results.append(ip)
-        return results
-
-    # Optimize batch size for better performance
-    batch_size = 32
-    ip_batches = [ips[i:i + batch_size] for i in range(0, len(ips), batch_size)]
-    
-    # Increase worker count for batch processing
-    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
-        futures = [executor.submit(ping_ips, batch) for batch in ip_batches]
-        for future in concurrent.futures.as_completed(futures):
-            online_devices.extend(future.result())
+                    online_devices.append(ip)
+    else:
+        # Scan sequentially
+        for ip in ips:
+            _, status = ping(ip)
+            if status:
+                online_devices.append(ip)
     
     # Resolve hostnames and vendors in parallel
     hostnames = {}
@@ -211,21 +235,23 @@ def scan_network(subnet, scan_hostname=False, scan_vendor=False):
         mac = get_mac_address(ip)
         return ip, get_vendor(mac, oui_dict)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
-        if scan_hostname:
-            hostname_futures = {executor.submit(resolve_hostname, ip): ip for ip in online_devices}
-        if scan_vendor:
-            vendor_futures = {executor.submit(resolve_vendor, ip): ip for ip in online_devices}
+    if online_devices and (scan_hostname or scan_vendor):
+        print(f"\033[94m[DEBUG] Resolving hostnames/vendors with up to 50 threads for {len(online_devices)} devices.\033[0m")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+            if scan_hostname:
+                hostname_futures = {executor.submit(resolve_hostname, ip): ip for ip in online_devices}
+            if scan_vendor:
+                vendor_futures = {executor.submit(resolve_vendor, ip): ip for ip in online_devices}
 
-        if scan_hostname:
-            for future in concurrent.futures.as_completed(hostname_futures):
-                ip, hostname = future.result()
-                hostnames[ip] = hostname
+            if scan_hostname:
+                for future in concurrent.futures.as_completed(hostname_futures):
+                    ip, hostname = future.result()
+                    hostnames[ip] = hostname
 
-        if scan_vendor:
-            for future in concurrent.futures.as_completed(vendor_futures):
-                ip, vendor = future.result()
-                vendors[ip] = vendor
+            if scan_vendor:
+                for future in concurrent.futures.as_completed(vendor_futures):
+                    ip, vendor = future.result()
+                    vendors[ip] = vendor
 
     # Build the results
     results = []

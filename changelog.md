@@ -2,6 +2,53 @@
 
 All notable changes to this project will be documented in this file (only user-related things).
 
+## [v1.5] - 2025-07-22
+### Added
+- New Auto tab
+  - this is used to create a background service that will periodically ping a server to see if your online
+  - if you are offline it will attempt to run a bypass automatically
+  - `Beta Features` must be enabled in settings to try this (this is under misc settings)
+
+- Customization
+  - inside `Settings > Customization` the user can change aspects of the ui/ux
+  - there is multiple themes the user can use
+
+- Developer settings
+  - Server Backend - allows the user to change the backend the server uses (default is Waitress due to stability)
+
+- Networking settings
+  - the user can now change the way scanning happens
+  - they can also decide if they want to use multithreading or not
+  - as well the user can select a multithreading multipler (cpu threads X multipler = total threads)
+  - bypassing related settings have been moved here
+
+- Accelerated bypassing  
+  - faster than normal bypass  
+  - uses powershell "soft" restart instead of hard disable/enable
+  - usually cuts down bypass by 1–3 seconds, this time is cutdown when reconnecting to the network 
+
+### Changed
+- Reworked monitoring tab
+	- monitoring tab will now show processes then show their connections
+	- improved time logging 
+
+- Improved runtime performance by including `waitress` alongside flask and other core optimizations
+  - `waitress` improves performance by using multiple threads on the server
+  - now lazy loads certain python modules/libraries
+
+### Removed
+- Removed hotspot tab
+  - hotspot api was causing issues and wouldnt work on all windows versions
+
+- Removed visualizer tab
+	- added a lot of hassle to code around
+	- as well created longer loading/init timing
+
+### UI/UX
+- Complete ui redesign
+	- includes whole new feel and aesthetic to the ui/ux
+	- completely redesigned for every tab
+
 ## [v1.4] - 2025-05-17
 ### Added
 - Added electron support

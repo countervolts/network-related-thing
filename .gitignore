@@ -1,3 +1,4 @@
+# electron
 node_modules/
 electron-wrapper/node_modules/
 package-lock.json
@@ -6,18 +7,13 @@ electron-wrapper/package-lock.json
 electron-builder-overrides.yml
 electron-wrapper/dist/
 
+# python
 __pycache__/
 build/
 dist/
 .vscode/
 release/
-
 *.spec
-todo.md
 
 # internal testing/cleaning/releasing files
 /internal
-
-# covers virtually all changes made the the version
-# replaced with changelog.md which covers a more "user-friendly" version of the changelog
-INTERNALchangelog.md

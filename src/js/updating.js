@@ -8,7 +8,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const updateProgressBar = document.getElementById('updateProgressBar');
     const updateProgressText = document.getElementById('updateProgressText');
     
-    // Get the current version from the UI
     const versionElement = document.querySelector('.version');
     const currentVersion = versionElement ? versionElement.textContent.trim() : 'v1.0';
     
@@ -18,8 +17,8 @@ document.addEventListener('DOMContentLoaded', () => {
     
     async function checkForUpdates() {
         updateStatusElement.textContent = 'Checking for updates...';
-        updateStatusElement.className = 'status checking';
-        currentVersionElement.textContent = currentVersion;
+        updateStatusElement.className = 'update-status-box checking';
+        currentVersionElement.textContent = currentVersion.replace(/^v/, '');
         downloadUpdateBtn.disabled = true;
         
         try {
@@ -30,7 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (response.ok) {
                 latestVersion = releaseData.tag_name;
-                latestVersionElement.textContent = latestVersion;
+                latestVersionElement.textContent = latestVersion.replace(/^v/, '');
                 
                 // Check if there's a new version available
                 const isNewer = compareVersions(latestVersion, currentVersion);
@@ -42,11 +41,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 if (isNewer) {
                     updateStatusElement.textContent = 'Update Available';
-                    updateStatusElement.className = 'status update-available';
+                    updateStatusElement.className = 'update-status-box update-available';
                     downloadUpdateBtn.disabled = false;
                 } else {
                     updateStatusElement.textContent = 'Up to Date';
-                    updateStatusElement.className = 'status up-to-date';
+                    updateStatusElement.className = 'update-status-box up-to-date';
                     downloadUpdateBtn.disabled = true;
                 }
                 
@@ -60,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error('Failed to check for updates:', error);
             updateStatusElement.textContent = 'Update Check Failed';
-            updateStatusElement.className = 'status error';
+            updateStatusElement.className = 'update-status-box error';
             return false;
         }
     }
@@ -126,7 +125,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const checkUpdateBtn = document.getElementById('checkUpdateBtn');
         if (checkUpdateBtn) {
             checkUpdateBtn.addEventListener('click', () => {
-                // Your existing update check code
                 loadChangelog(true); // Load latest changelog when checking for updates
             });
         }
@@ -134,7 +132,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Compare version strings (returns true if latest is newer than current)
     function compareVersions(latest, current) {
-        // Remove the 'v' prefix if present
         const latestVer = latest.replace(/^v/, '');
         const currentVer = current.replace(/^v/, '');
         
