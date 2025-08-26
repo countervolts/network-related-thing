@@ -115,12 +115,6 @@ def get_active_network_adapter():
     return None, None
 
 def restart_all_adapters(adapter_name=None):
-    """
-    Performs a soft restart on network adapters using PowerShell.
-    If adapter_name is provided, it sets the speed to 1Gbps Full Duplex
-    and then restarts only that specific adapter.
-    Otherwise, it restarts all physical adapters without changing speed settings.
-    """
     try:
         if adapter_name:
             # Attempt to set Speed & Duplex to 1.0 Gbps Full Duplex to reduce negotiation time
@@ -271,7 +265,6 @@ def get_adapter_name(sub_name):
     return None
 
 def get_adapter_ip(adapter_name):
-    """Polls for the IP address of a specific network adapter."""
     try:
         # Use netsh to get IP configuration for the specific adapter
         result = subprocess.run(
@@ -292,7 +285,6 @@ def get_adapter_ip(adapter_name):
     return None
 
 def get_transport_guid(sub_name):
-    """Gets the transport GUID (NetCfgInstanceId) from a registry sub_name."""
     key_path = f"SYSTEM\\ControlSet001\\Control\\Class\\{{4d36e972-e325-11ce-bfc1-08002be10318}}\\{sub_name}"
     try:
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path) as key:
@@ -302,7 +294,6 @@ def get_transport_guid(sub_name):
         return None
 
 def get_ps_name_from_guid(guid):
-    """Gets the PowerShell 'Name' of a network adapter from its GUID for reliable targeting."""
     if not guid:
         return None
     try:
@@ -323,7 +314,6 @@ def get_ps_name_from_guid(guid):
         return None
 
 def get_ps_name_from_guid_registry(guid):
-    """Gets the PowerShell 'Name' of a network adapter from its GUID using the registry (most reliable)."""
     if not guid:
         return None
     try:
@@ -342,7 +332,6 @@ def get_ps_name_from_guid_registry(guid):
     return None
 
 def get_ps_name_from_description(description):
-    """Gets the PowerShell 'Name' of a network adapter from its description as a fallback."""
     try:
         ps_cmd = (
             f"Get-NetAdapter | Where-Object {{$_.InterfaceDescription -eq '{description}'}} | "
@@ -365,7 +354,6 @@ def get_ps_name_from_description(description):
         return None
 
 def check_internet(timeout=10):
-    """Check for internet access by pinging a reliable host (8.8.8.8)."""
     try:
         result = subprocess.run(
             ["ping", "-n", "1", "-w", "1000", "8.8.8.8"],  # 1 ping, 1s timeout
@@ -375,7 +363,7 @@ def check_internet(timeout=10):
     except Exception:
         return False
 
-def init_bypass(sub_name, mac_mode='standard', use_hardware_rng=True, restart_adapters=True):
+def init_bypass(sub_name, mac_mode='standard', use_hardware_rng=True, restart_adapters=True, manual_mac=None):
     key_path = f"SYSTEM\\ControlSet001\\Control\\Class\\{{4d36e972-e325-11ce-bfc1-08002be10318}}\\{sub_name}"
     
     # Get adapter description for logging/display purposes
@@ -416,7 +404,13 @@ def init_bypass(sub_name, mac_mode='standard', use_hardware_rng=True, restart_ad
     start_time = time.time()  # Start timing
 
     for attempt in range(3):
-        if mac_mode == 'Tmac':
+        if mac_mode == 'manual':
+            if not manual_mac:
+                print(f"\033[91m[FATAL] Manual mode selected but no MAC address was provided.\033[0m")
+                return None
+            new_mac = manual_mac.replace("-", "").replace(":", "")
+            print(f"\033[94m[DEBUG] Using user-provided manual MAC: {new_mac}\033[0m")
+        elif mac_mode == 'Tmac':
             new_mac, instruction = rand0m_hex(mode='Tmac', use_hardware_rng=use_hardware_rng)
             print(f"\033[94m[DEBUG] Generated Tmac MAC: {new_mac} using {instruction}\033[0m")
         elif mac_mode == 'randomized':

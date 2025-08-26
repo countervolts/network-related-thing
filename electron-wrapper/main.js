@@ -1,8 +1,13 @@
-// Use CommonJS require syntax to match "type": "commonjs" in package.json
-const { app, BrowserWindow, Menu } = require('electron');
-const { spawn, exec } = require('child_process');
-const path = require('path');
-const os = require('os');
+import { app, BrowserWindow, Menu } from 'electron';
+import { spawn, execSync } from 'child_process';
+import path from 'path';
+import os from 'os';
+import { fileURLToPath } from 'url';
+
+// ES Module equivalent for __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 let pyProc = null;
 let mainWindow = null;
 let serverPort = null;
@@ -56,8 +61,7 @@ function startPythonServer() {
     console.log(`Server working directory: ${options.cwd}`);
     
     pyProc = spawn(serverPath, ['--electron-wrapper'], options);
-    
-    pyProc.unref();
+
   } else {
     // dev mode 
     serverPath = 'python';
@@ -74,7 +78,7 @@ function startPythonServer() {
   pyProc.stdout.on('data', (data) => {
     const output = data.toString();
     console.log(`Python server: ${output}`);
-    const match = output.match(/Starting server on localhost:(\d+)/);
+    const match = output.match(/Server running at http:\/\/[\d\.]+?:(\d+)/) || output.match(/Starting with .* server on localhost:(\d+)/);
     if (match && match[1]) {
       if (!serverPort) { 
         serverPort = match[1];
@@ -187,32 +191,25 @@ function createWindow() {
 
 app.on('ready', createWindow);
 
-app.on('will-quit', (event) => {
-  if (pyProc !== null && serverPort) { 
-    event.preventDefault(); 
+app.on('window-all-closed', () => {
+  app.quit();
+});
 
-    fetch(`http://localhost:${serverPort}/exit`, { 
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({})
-    })
-    .catch(() => console.log('Could not send graceful exit request to server. Forcing shutdown.'))
-    .finally(() => {
-      // Force kill the process after a short delay to ensure cleanup
-      setTimeout(() => {
-        if (os.platform() === 'win32') {
-          exec(`taskkill /F /IM server.exe /T`, (err) => {
-            if (err) {
-              console.error('Failed to kill server.exe process:', err.message);
-            } else {
-              console.log('Server process killed.');
-            }
-            pyProc = null;
-            app.quit(); 
-          });
-        }
-      }, 500);
-    });
+app.on('will-quit', () => {
+  if (pyProc) {
+    console.log(`Killing Python server process tree (PID: ${pyProc.pid})...`);
+    if (os.platform() === 'win32') {
+      try {
+        // holy shit this was so fucking annoying to fix
+        execSync(`taskkill /pid ${pyProc.pid} /T /F`);
+        console.log('Python server process tree terminated.');
+      } catch (err) {
+        console.error('Failed to kill Python server process tree:', err.message);
+      }
+    } else {
+      pyProc.kill();
+    }
+    pyProc = null;
   }
 });
 

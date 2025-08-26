@@ -4,8 +4,11 @@ hypercorn
 waitress
 requests
 pywin32
+pystray
+pillow
 getmac
 GPUtil
 psutil
+nuitka
 scapy
 flask

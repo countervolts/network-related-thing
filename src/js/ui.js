@@ -26,6 +26,13 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.classList.add('loaded');
     }, 100);
 
+    const ANIMATION_PRESETS = {
+        bouncy: 'cubic-bezier(0.68, -0.55, 0.265, 1.55)',
+        smooth: 'ease-in-out',
+        springy: 'cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+        linear: 'linear'
+    };
+
     // --- View Switching Logic ---
     const showViewFromHash = () => {
         const hash = window.location.hash || '#home';
@@ -70,6 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
             activeLink.classList.add('active');
             const glider = document.querySelector('.pill-nav .glider');
             if (glider) {
+                console.log(`[Debug] updateActiveNavLink: Active link is ${activeLink.href}. Measured offsetWidth: ${activeLink.offsetWidth}px`);
                 glider.style.width = `${activeLink.offsetWidth}px`;
                 glider.style.left = `${activeLink.offsetLeft}px`;
             }
@@ -83,8 +91,9 @@ document.addEventListener('DOMContentLoaded', () => {
         updateActiveNavLink();
     });
 
+    // Initial setup
     showViewFromHash();
-    updateActiveNavLink();
+    window.addEventListener('load', updateActiveNavLink);
 
     // --- Settings Panel Logic ---
     const settingsFab = document.getElementById('settings-fab');
@@ -96,10 +105,30 @@ document.addEventListener('DOMContentLoaded', () => {
         const settingsNavLinks = document.querySelectorAll('.settings-nav-link');
         const settingsSearchInput = document.getElementById('settingsSearchInput');
         
+        const showSection = (targetId) => {
+            const allSections = settingsPanelMain.querySelectorAll('.settings-section-content');
+            const targetSection = document.getElementById(targetId);
+
+            allSections.forEach(section => {
+                if (section.id === targetId) {
+                    section.classList.add('active');
+                } else {
+                    section.classList.remove('active');
+                }
+            });
+
+            settingsNavLinks.forEach(link => {
+                link.classList.toggle('active', link.getAttribute('href') === `#${targetId}`);
+            });
+        };
+
         // Open/Close Listeners
         settingsFab.addEventListener('click', () => {
             if (settingsPanelOverlay) {
                 settingsPanelOverlay.style.display = 'flex';
+                const activeLink = document.querySelector('.settings-nav-link.active');
+                const initialSectionId = activeLink ? activeLink.getAttribute('href').substring(1) : 'settings-section-misc';
+                showSection(initialSectionId);
             }
             document.body.style.overflow = 'hidden';
         });
@@ -129,13 +158,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 const searchTerm = e.target.value.toLowerCase().trim();
                 const allSections = settingsPanelMain.querySelectorAll('.settings-section-content');
 
+                if (searchTerm) {
+                    // Show all sections to enable searching across them
+                    allSections.forEach(section => section.style.display = 'block');
+                } else {
+                    // When search is cleared, revert to showing only the active section
+                    const activeLink = document.querySelector('.settings-nav-link.active');
+                    if (activeLink) {
+                        showSection(activeLink.getAttribute('href').substring(1));
+                    }
+                    // Also reset all inline styles from the search
+                    allSections.forEach(section => {
+                        section.style.display = '';
+                        section.querySelectorAll('.setting-item, .section-title').forEach(el => el.style.display = '');
+                    });
+                    return; // Exit after resetting to default view
+                }
+
                 allSections.forEach(section => {
+                    let sectionHasVisibleContent = false;
                     const allSettings = section.querySelectorAll('.setting-item');
                     
                     allSettings.forEach(item => {
                         const terms = item.dataset.searchTerm || '';
                         const isVisible = terms.toLowerCase().includes(searchTerm);
                         item.style.display = isVisible ? '' : 'none';
+                        if (isVisible) sectionHasVisibleContent = true;
                     });
 
                     section.querySelectorAll('.section-title').forEach(title => {
@@ -143,45 +191,26 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (grid && grid.classList.contains('settings-grid')) {
                             const hasVisibleItems = grid.querySelector('.setting-item:not([style*="display: none"])');
                             title.style.display = hasVisibleItems ? '' : 'none';
-                        } else {
-                            title.style.display = searchTerm ? 'none' : '';
                         }
                     });
 
-                    const hasVisibleContent = section.querySelector('.setting-item:not([style*="display: none"]), .section-title:not([style*="display: none"])');
-
+                    // Hide the main section title if no content matches
+                    const mainTitle = section.querySelector('.settings-main-title');
+                    if (mainTitle) {
+                        mainTitle.style.display = sectionHasVisibleContent ? '' : 'none';
+                    }
                 });
             });
         }
 
-        // Nav link scrolling and active state
-        if (settingsNavLinks.length > 0 && settingsPanelMain) {
+        // Nav link click handling
+        if (settingsNavLinks.length > 0) {
             settingsNavLinks.forEach(link => {
                 link.addEventListener('click', (e) => {
                     e.preventDefault();
                     const targetId = link.getAttribute('href').substring(1);
-                    const targetElement = document.getElementById(targetId);
-                    if (targetElement) {
-                        settingsPanelMain.scrollTo({
-                            top: targetElement.offsetTop - 30,
-                            behavior: 'smooth'
-                        });
-                    }
-                });
-            });
-
-            settingsPanelMain.addEventListener('scroll', () => {
-                let currentSectionId = '';
-                const sections = Array.from(settingsNavLinks).map(link => document.getElementById(link.getAttribute('href').substring(1)));
-
-                sections.forEach(section => {
-                    if (section && section.offsetTop <= settingsPanelMain.scrollTop + 40) {
-                        currentSectionId = `#${section.id}`;
-                    }
-                });
-
-                settingsNavLinks.forEach(link => {
-                    link.classList.toggle('active', link.getAttribute('href') === currentSectionId);
+                    showSection(targetId);
+                    settingsSearchInput.value = ''; // Clear search on tab change
                 });
             });
         }
@@ -194,9 +223,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const themeSelector = document.getElementById('themeSelector');
             const navTabDropdown = document.getElementById('navTabDropdown');
             const resetNavVisibilityBtn = document.getElementById('resetNavVisibilityBtn');
+            const iconNavToggle = document.getElementById('iconNavToggle');
+            const navAnimationSelector = document.getElementById('navAnimationSelector');
 
             // Guard against missing elements
-            if (!accentColorPicker || !resetAccentColorBtn || !clockFormatToggle || !themeSelector || !navTabDropdown || !resetNavVisibilityBtn) {
+            if (!accentColorPicker || !resetAccentColorBtn || !clockFormatToggle || !themeSelector || !navTabDropdown || !resetNavVisibilityBtn || !iconNavToggle || !navAnimationSelector) {
                 console.error("One or more customization settings elements are missing from the DOM.");
                 return;
             }
@@ -219,6 +250,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 theme: 'dark',
                 accentColor: '#0a84ff',
                 use24HourClock: false,
+                useIconNav: false,
+                navAnimation: 'bouncy',
                 navVisibility: {
                     scannerTab: true,
                     monitorTab: true,
@@ -248,6 +281,58 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const buttonTextColor = isLightColor(color) ? '#333333' : '#ffffff';
                 document.documentElement.style.setProperty('--button-text-color', buttonTextColor);
+            };
+
+            const applyNavAnimation = (animationName) => {
+                const timingFunction = ANIMATION_PRESETS[animationName] || ANIMATION_PRESETS.bouncy;
+                document.documentElement.style.setProperty('--nav-glider-timing-function', timingFunction);
+                navAnimationSelector.value = animationName;
+            };
+
+            const applyNavStyle = (useIcons) => {
+                document.documentElement.dataset.navStyle = useIcons ? 'icons' : 'text';
+                iconNavToggle.checked = useIcons;
+
+                const pillNav = document.querySelector('.pill-nav');
+                if (!pillNav) return;
+
+                let glider = pillNav.querySelector('.glider');
+                if (!glider) {
+                    glider = document.createElement('div');
+                    glider.className = 'glider';
+                    glider.style.transition = 'none';
+                    pillNav.insertBefore(glider, pillNav.firstChild);
+                    // force a reflow
+                    void glider.offsetWidth;
+                    glider.style.transition = '';
+                }
+
+                const measureAndPosition = () => {
+                    const hash = window.location.hash || '#home';
+                    const activeLink = document.querySelector(`.pill-nav a[href="${hash}"]`);
+                    if (activeLink && glider) {
+                        requestAnimationFrame(() => {
+                            glider.style.width = `${activeLink.offsetWidth}px`;
+                            glider.style.left = `${activeLink.offsetLeft}px`;
+                        });
+                    }
+                };
+
+                requestAnimationFrame(() => requestAnimationFrame(measureAndPosition));
+
+                if (!useIcons) {
+                    const onEnd = (e) => {
+                        if (!(e.target instanceof Element) || !e.target.closest('.pill-nav')) return;
+                        pillNav.removeEventListener('transitionend', onEnd);
+                        measureAndPosition();
+                    };
+                    pillNav.addEventListener('transitionend', onEnd, { once: true });
+
+                    setTimeout(() => {
+                        pillNav.removeEventListener('transitionend', onEnd);
+                        measureAndPosition();
+                    }, 450);
+                }
             };
 
             const toggleNavElement = (tabId, shouldShow) => {
@@ -291,6 +376,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     theme: themeSelector.value,
                     accentColor: accentColorPicker.value,
                     use24HourClock: clockFormatToggle.checked,
+                    useIconNav: iconNavToggle.checked,
+                    navAnimation: navAnimationSelector.value,
                     navVisibility: {}
                 };
                 Object.keys(TABS_TO_TOGGLE).forEach(tabId => {
@@ -309,6 +396,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 applyTheme(settings.theme || defaultSettings.theme);
                 applyAccentColor(settings.accentColor || defaultSettings.accentColor);
+                applyNavStyle(settings.useIconNav || defaultSettings.useIconNav);
+                applyNavAnimation(settings.navAnimation || defaultSettings.navAnimation);
                 
                 clockFormatToggle.checked = settings.use24HourClock;
                 document.dispatchEvent(new CustomEvent('clockFormatChanged', { detail: { use24HourClock: settings.use24HourClock } }));
@@ -367,6 +456,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.dispatchEvent(new CustomEvent('clockFormatChanged', { detail: { use24HourClock: clockFormatToggle.checked } }));
                 saveSettings();
             });
+            iconNavToggle.addEventListener('change', () => {
+                applyNavStyle(iconNavToggle.checked);
+                saveSettings();
+            });
+
+            navAnimationSelector.addEventListener('change', () => {
+                applyNavAnimation(navAnimationSelector.value);
+                saveSettings();
+            });
 
             resetNavVisibilityBtn.addEventListener('click', () => {
                 Object.keys(TABS_TO_TOGGLE).forEach(tabId => {
@@ -387,7 +485,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Tooltip Logic for Info Icons ---
-    const createTooltip = (iconId, content, position = 'right') => {
+    const createTooltip = (iconId, content) => {
         const icon = document.getElementById(iconId);
         if (!icon) return;
 
@@ -398,19 +496,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let hideTimeout;
 
+        const positionTooltip = () => {
+            const rect = icon.getBoundingClientRect();
+            const tooltipRect = tooltip.getBoundingClientRect();
+            const margin = 10;
+
+            // Determine available space on both sides
+            const spaceRight = window.innerWidth - rect.right - margin;
+            const spaceLeft = rect.left - margin;
+
+            // Decide position based on available space
+            let position = 'right';
+            if (spaceRight < tooltipRect.width && spaceLeft > spaceRight) {
+                position = 'left';
+            }
+
+            // Set horizontal position
+            if (position === 'left') {
+                tooltip.style.left = `${rect.left - tooltipRect.width - margin}px`;
+            } else {
+                tooltip.style.left = `${rect.right + margin}px`;
+            }
+
+            // Set vertical position and clamp it to stay within the viewport
+            let top = rect.top + (rect.height / 2) - (tooltipRect.height / 2);
+            if (top < margin) {
+                top = margin;
+            } else if (top + tooltipRect.height > window.innerHeight - margin) {
+                top = window.innerHeight - tooltipRect.height - margin;
+            }
+            tooltip.style.top = `${top}px`;
+        };
+
         const show = () => {
             clearTimeout(hideTimeout);
-            const rect = icon.getBoundingClientRect();
             tooltip.classList.add('visible');
-
-            // Position tooltip based on the 'position' argument
-            if (position === 'left') {
-                tooltip.style.left = `${rect.left - tooltip.offsetWidth - 10}px`;
-                tooltip.style.top = `${rect.top + (rect.height / 2) - (tooltip.offsetHeight / 2)}px`;
-            } else { // Default to right
-                tooltip.style.left = `${rect.right + 10}px`;
-                tooltip.style.top = `${rect.top + (rect.height / 2) - (tooltip.offsetHeight / 2)}px`;
-            }
+            positionTooltip();
         };
 
         const hide = () => {
@@ -425,6 +546,8 @@ document.addEventListener('DOMContentLoaded', () => {
         tooltip.addEventListener('mouseleave', hide);
     };
 
+    window.createTooltip = createTooltip; // Make it globally accessible
+
     // Initialize tooltips
     createTooltip(
         'bypassTabInfo',
@@ -432,8 +555,7 @@ document.addEventListener('DOMContentLoaded', () => {
          <p><strong>Standard:</strong> Sets a valid, non-random MAC address.</p>
          <p><strong>Tmac:</strong> Uses the format of the popular TMAC tool.</p>
          <p><strong>Randomized:</strong> Generates a fully random (Unicast LAA) MAC address.</p>
-         <div class="tooltip-warning">Note: All methods require administrative privileges.</div>`,
-        'left'
+         <div class="tooltip-warning">Note: All methods require administrative privileges.</div>`
     );
 
     createTooltip(
@@ -443,6 +565,46 @@ document.addEventListener('DOMContentLoaded', () => {
          <p><strong>Full Scan:</strong> A more thorough scan that also attempts to identify the device's hostname and manufacturer. This scan takes longer.</p>
          <div class="tooltip-warning">Note: Full scans require the OUI file (downloadable in settings) for vendor lookups.</div>`,
         'right'
+    );
+
+    createTooltip(
+        'navAnimationInfo',
+        `<h3>Animation Previews</h3>
+         <p>Hover over an item to see a preview of the animation.</p>
+         <div class="animation-preview-container">
+            <div class="animation-preview-item">
+                <span class="animation-preview-label">Bouncy</span>
+                <div class="animation-preview-track">
+                    <div class="animation-preview-dot"></div>
+                    <div class="animation-preview-glider" style="transition-timing-function: ${ANIMATION_PRESETS.bouncy};"></div>
+                    <div class="animation-preview-dot"></div>
+                </div>
+            </div>
+            <div class="animation-preview-item">
+                <span class="animation-preview-label">Smooth</span>
+                <div class="animation-preview-track">
+                    <div class="animation-preview-dot"></div>
+                    <div class="animation-preview-glider" style="transition-timing-function: ${ANIMATION_PRESETS.smooth};"></div>
+                    <div class="animation-preview-dot"></div>
+                </div>
+            </div>
+            <div class="animation-preview-item">
+                <span class="animation-preview-label">Springy</span>
+                <div class="animation-preview-track">
+                    <div class="animation-preview-dot"></div>
+                    <div class="animation-preview-glider" style="transition-timing-function: ${ANIMATION_PRESETS.springy};"></div>
+                    <div class="animation-preview-dot"></div>
+                </div>
+            </div>
+            <div class="animation-preview-item">
+                <span class="animation-preview-label">Linear</span>
+                <div class="animation-preview-track">
+                    <div class="animation-preview-dot"></div>
+                    <div class="animation-preview-glider" style="transition-timing-function: ${ANIMATION_PRESETS.linear};"></div>
+                    <div class="animation-preview-dot"></div>
+                </div>
+            </div>
+         </div>`
     );
 
     createTooltip(
@@ -460,4 +622,68 @@ document.addEventListener('DOMContentLoaded', () => {
          <p><strong>Hypercorn:</strong> A high-performance server that can be faster but may be less stable on some systems.</p>
          <div class="tooltip-warning">A restart is required for this change to take effect.</div>`
     );
+});
+
+// Network Debugging Panel Logic
+document.addEventListener('DOMContentLoaded', () => {
+    const panel = document.getElementById('networkDebugPanel');
+    if (!panel) return;
+
+    const togglePanel = () => {
+        const isOpen = panel.classList.toggle('open');
+        if (isOpen) {
+            panel.style.display = 'block';
+            setTimeout(() => panel.classList.add('visible'), 10);
+        } else {
+            panel.classList.remove('visible');
+            setTimeout(() => { if (!panel.classList.contains('open')) panel.style.display = 'none'; }, 300);
+        }
+    };
+
+    document.getElementById('networkDebugToggle')?.addEventListener('click', togglePanel);
+
+    const logNetworkActivity = (data) => {
+        if (!data || !data.timestamp) return;
+
+        const logEntry = document.createElement('div');
+        logEntry.className = 'log-entry';
+        logEntry.innerHTML = `
+            <span class="log-time">${new Date(data.timestamp).toLocaleTimeString()}</span>
+            <span class="log-message">${data.message}</span>
+            <span class="log-latency">${data.latency}ms</span>
+        `;
+
+        const logContainer = panel.querySelector('.network-debug-log');
+        if (logContainer) {
+            logContainer.prepend(logEntry);
+            // Keep the log from growing indefinitely
+            const MAX_LOG_ENTRIES = 50;
+            // Instead of removing DOM nodes (which causes entries to "fall off"),
+            // hide the oldest visible entries so overflow/clip behavior keeps the UI unchanged.
+            let visibleChildren = Array.from(logContainer.children).filter(c => getComputedStyle(c).display !== 'none');
+            while (visibleChildren.length > MAX_LOG_ENTRIES) {
+                // find the oldest visible (last) child and hide it
+                const lastVisible = [...logContainer.children].reverse().find(c => getComputedStyle(c).display !== 'none');
+                if (!lastVisible) break;
+                lastVisible.classList.add('hidden-by-search'); // already defined in CSS
+                lastVisible.setAttribute('aria-hidden', 'true');
+                // recompute visible children and continue until within limit
+                visibleChildren = Array.from(logContainer.children).filter(c => getComputedStyle(c).display !== 'none');
+            }
+        } else {
+            // Fallback for the old structure, though this should now be corrected.
+            panel.appendChild(logEntry);
+        }
+    };
+
+    const clearNetworkLog = () => {
+        const logContainer = panel.querySelector('.network-debug-log');
+        if (logContainer) {
+            logContainer.innerHTML = '';
+        }
+    };
+
+    // Expose functions to the global scope for debugging
+    window.logNetworkActivity = logNetworkActivity;
+    window.clearNetworkLog = clearNetworkLog;
 });

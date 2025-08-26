@@ -2,6 +2,55 @@
 
 All notable changes to this project will be documented in this file (only user-related things).
 
+# [v1.6] - 2025-08-25
+### Added
+- Updating
+  - users can now rollback to older versions of the code if there are issues with their current one
+  - inside the settings there is now a option to toggle on/off a auto update feature (enabled by default) 
+
+- Bypasser
+  - the bypasser will now accept a mac address from the user to change to
+  - a new mac address toolkit will allow users to generate mac addresses based off certain vendors (over 19,000 to pick from!)
+  - also inside the toolkit will be a mac validator for the manual changing method
+  - lastly the user can generate a fully working bypassable mac address
+
+- Scanning
+  - Two new scanning methods are available:
+    - `Hybrid/Adaptive` — uses a faster arp ping then resolves vendor/hostnames, can be faster for basic scans but usually falls off for full scans
+    - `Smart` — performs a single arp ping to discover hosts instantly, loads mac -> vendor into ram and resolves hostnames via dns for fastest speed, will fallback if arp isnt available
+  - scanning tab also shows open ports for the device 
+
+- Monitoring
+  - the monitor tab will now show process details for a selected process (press the little info circle)
+
+- Home
+  - home tab now shows recent activity which contains scan and bypasses
+
+- Settings
+  - new developer setting that allows you to inspect elements on the site called `UI Debug Mode`
+  - new developer setting that allows you to easily debug network requests between the server and client called `Network Debug Mode`
+  - now lets you hide the console window into the hidden icons section of the task bar
+
+### Changed
+- The History tab now shows how long each scan took (in seconds)
+- If the OUI data file is already downloaded, the user can now choose to update it from the settings
+- Improved full debug mode, now provides a snapshot of your device and its specifications
+
+- Electron
+  - electron will now run and work mostly as intended with just some minor issues some of these issues are
+    - if you run the application for several hours a memory leak will happen so just make sure not to leave it open over night
+  - this will be fixed ideally in version 1.7 (next update)
+
+### UI/UX
+- Settings are now organized into collapsible sections instead of a single long list
+- Users can now choose between text labels or icons for the main navigation bar
+- Tooltips now appear in more intelligent and helpful locations throughout the app
+- Users can now change the animation that happens with the nav bar glider in the customization settings
+
+### Builders
+- Rewrote both pyinstaller and electron builders they now build much cleaner with a temp dir and proper logging and cleaning up
+- Added a Nuitka builder, this will produce a highly optimized executables, but requires more system resources (ideally 6+ cpu cores on a modern processor). Build times are way longer compared to pyinstaller (e.g., ~20 minutes on an 8c/16t CPU).
+
 ## [v1.5] - 2025-07-22
 ### Added
 - New Auto tab
@@ -80,7 +129,7 @@ All notable changes to this project will be documented in this file (only user-r
 ### Build Improvements
 - `build.cmd` now includes:
   - Home, Update and Monitor tab data.
-- `electron-build.cmd` is a file that you can use to compile your own portable version of the code
+- `electron.cmd` is a file that you can use to compile your own portable version of the code
 
 ## [v1.3] - 2025-04-28
 ### Added

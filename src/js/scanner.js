@@ -98,6 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
     disabledDevicesBox = document.getElementById('disabledDevices');
     const lastScanTimestamp = document.getElementById('lastScanTimestamp');
     const deviceDetailsPanel = document.getElementById('deviceDetailsContent');
+    const portScanPanel = document.getElementById('portScanContent');
     const deviceSearchInput = document.getElementById('deviceSearchInput');
 
     let lastScanDetails = JSON.parse(localStorage.getItem('lastScanDetails')) || null;
@@ -166,7 +167,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="detail-item"><div class="detail-label">MAC Address</div><div class="detail-value">${device.mac}</div></div>
                     <div class="detail-item"><div class="detail-label">Hostname</div><div class="detail-value">${device.hostname || 'N/A'}</div></div>
                     <div class="detail-item"><div class="detail-label">Vendor</div><div class="detail-value">${device.vendor || 'N/A'}</div></div>
+                    <div class="detail-item">
+                        <div class="detail-label">Open Ports</div>
+                        <div class="detail-value" id="ports-scan-result-container">
+                            <div class="loading-spinner-small"></div>
+                        </div>
+                    </div>
                 `;
+                // Trigger port scan when a device is selected
+                scanPorts(device.ip);
             }
         });
 
@@ -217,6 +226,29 @@ document.addEventListener('DOMContentLoaded', () => {
         if (resultsBody && discoveredDevicesCount === 0) {
             resultsBody.innerHTML = '<div class="no-results">Run a scan to discover devices.</div>';
             resetDeviceDetails();
+        }
+    }
+
+    async function scanPorts(ip) {
+        const portResultContainer = document.getElementById('ports-scan-result-container');
+        if (!portResultContainer) return;
+
+        try {
+            const response = await fetch(`/scan/ports?ip=${ip}`);
+            const data = await response.json();
+
+            if (response.ok) {
+                if (data.ports && data.ports.length > 0) {
+                    portResultContainer.innerHTML = `<span>${data.ports.join(', ')}</span>`;
+                } else {
+                    portResultContainer.innerHTML = `<span>No open ports found</span>`;
+                }
+            } else {
+                portResultContainer.innerHTML = `<span class="error-message">${data.error || 'Failed to scan ports.'}</span>`;
+            }
+        } catch (error) {
+            console.error('Port scan error:', error);
+            portResultContainer.innerHTML = '<span class="error-message">Error scanning ports.</span>';
         }
     }
 

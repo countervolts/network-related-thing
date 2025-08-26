@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const hideWebsiteToggle = document.getElementById('hideWebsiteToggle');
     const autoOpenToggle = document.getElementById('autoOpenToggle');
+    const autoUpdateToggle = document.getElementById('autoUpdateToggle');
     const debugModeDropdown = document.getElementById('debugModeDropdown');
     const bypassModeDropdown = document.getElementById('bypassModeDropdown');
     const runAsAdminToggle = document.getElementById('runAsAdminToggle');
@@ -18,6 +19,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const cancelBtn = document.getElementById('cancelBtn');
     const changesList = document.getElementById('changesList');
     const openWinHotspotSettingsBtn = document.getElementById('openWinHotspotSettingsBtn');
+    const uiDebugModeToggle = document.getElementById('uiDebugModeToggle');
+    const networkDebugModeToggle = document.getElementById('networkDebugModeToggle');
+    let networkStatsInterval = null;
+    let originalFetch = null;
 
     // Store original console methods
     const originalConsole = {
@@ -33,12 +38,21 @@ document.addEventListener('DOMContentLoaded', () => {
         !runAsAdminToggle || !applySettingsBtn || !confirmationModal || 
         !confirmBtn || !cancelBtn || !changesList || !hardwareRngToggle ||
         !pbccToggle || !acceleratedBypassingToggle || !serverBackendDropdown || !scanningMethodDropdown || 
-        !parallelScansToggle || !overrideMultiplierInput || !betaFeaturesToggle || !openWinHotspotSettingsBtn) {
+        !parallelScansToggle || !overrideMultiplierInput || !betaFeaturesToggle || !openWinHotspotSettingsBtn || !uiDebugModeToggle || !networkDebugModeToggle) {
         console.error('One or more settings elements are missing in the DOM.');
         return;
     }
 
     let currentSettings = {};
+
+    function formatBytes(bytes, decimals = 2) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
 
     function updateMultiplierDescription() {
         const multiplier = overrideMultiplierInput.value;
@@ -62,6 +76,48 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Make loadOuiFileInfo globally accessible so it can be called after an update.
+    window.loadOuiFileInfo = async function() {
+        try {
+            const response = await fetch('/misc/oui-info');
+            const data = await response.json();
+            const downloadOuiBtn = document.getElementById('downloadOuiBtn');
+
+            if (!downloadOuiBtn) return;
+
+            if (data.exists) {
+                downloadOuiBtn.textContent = 'Update';
+                const lastModifiedDate = new Date(data.last_modified * 1000).toLocaleDateString();
+                createInfoTooltip('ouiFileInfo', `
+                    <h3>OUI Database Information</h3>
+                    <div class="tooltip-item">
+                        <p><strong>Status:</strong> Downloaded</p>
+                    </div>
+                    <div class="tooltip-item">
+                        <p><strong>Unique Vendors:</strong> ${data.vendor_count.toLocaleString()}</p>
+                    </div>
+                    <div class="tooltip-item">
+                        <p><strong>Size:</strong> ${formatBytes(data.size)}</p>
+                    </div>
+                    <div class="tooltip-item">
+                        <p><strong>Last Updated:</strong> ${lastModifiedDate}</p>
+                    </div>
+                `);
+            } else {
+                downloadOuiBtn.textContent = 'Download';
+                createInfoTooltip('ouiFileInfo', `
+                    <h3>OUI Database Information</h3>
+                    <div class="tooltip-item">
+                        <p><strong>Status:</strong> Not Downloaded</p>
+                    </div>
+                    <div class="tooltip-warning">The OUI (Organizationally Unique Identifier) database is required to match MAC addresses to device manufacturers during a full scan.</div>
+                `);
+            }
+        } catch (error) {
+            console.error('Failed to load OUI file info:', error);
+        }
+    }
+
     async function loadSettings() {
         try {
             const response = await fetch('/settings');
@@ -71,11 +127,14 @@ document.addEventListener('DOMContentLoaded', () => {
             // General Settings
             hideWebsiteToggle.checked = settings.hide_website || false;
             autoOpenToggle.checked = settings.auto_open_page !== false;
+            autoUpdateToggle.checked = settings.auto_update !== false;
             runAsAdminToggle.checked = settings.run_as_admin || false;
             
             // Developer Settings
             debugModeDropdown.value = settings.debug_mode || 'off';
             serverBackendDropdown.value = settings.server_backend || 'waitress';
+            uiDebugModeToggle.checked = settings.ui_debug_mode || false;
+            networkDebugModeToggle.checked = settings.network_debug_mode || false;
 
             // Networking Settings
             bypassModeDropdown.value = settings.bypass_mode || 'registry';
@@ -90,7 +149,14 @@ document.addEventListener('DOMContentLoaded', () => {
             betaFeaturesToggle.checked = settings.beta_features || false;
 
             applyDebugMode(settings.debug_mode);
+            applyUiDebugMode(settings.ui_debug_mode);
+            networkDebugModeToggle.checked = settings.network_debug_mode || false;
+            applyNetworkDebugMode(settings.network_debug_mode);
             updateMultiplierDescription();
+            if (window.loadOuiFileInfo) {
+                window.loadOuiFileInfo();
+            }
+            initializeTooltips(); // Initialize tooltips after settings are loaded
         } catch (error) {
             console.error('Failed to load settings:', error);
         }
@@ -109,11 +175,14 @@ document.addEventListener('DOMContentLoaded', () => {
             // General
             hide_website: hideWebsiteToggle.checked,
             auto_open_page: autoOpenToggle.checked,
+            auto_update: autoUpdateToggle.checked,
             run_as_admin: runAsAdminToggle.checked,
             
             // Developer
             debug_mode: debugModeDropdown.value,
             server_backend: serverBackendDropdown.value,
+            ui_debug_mode: uiDebugModeToggle.checked,
+            network_debug_mode: networkDebugModeToggle.checked,
 
             // Networking
             bypass_mode: bypassModeDropdown.value,
@@ -159,6 +228,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentSettings = { ...updatedSettings }; // Update current settings state
                 applySettingsBtn.classList.remove('visible');
                 applyDebugMode(updatedSettings.debug_mode);
+                applyUiDebugMode(updatedSettings.ui_debug_mode);
+                applyNetworkDebugMode(updatedSettings.network_debug_mode);
                 applyBetaFeatures(updatedSettings.beta_features);
             } else {
                 const errorData = await response.json();
@@ -225,36 +296,253 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function applyBetaFeatures(enabled) {
         const autoTabWrapper = document.getElementById('autoTabWrapper');
-    
         if (autoTabWrapper) {
-            autoTabWrapper.style.display = enabled ? 'block' : 'none';
+            autoTabWrapper.style.display = enabled ? '' : 'none';
         }
-    
-        const navTabDropdownOptions = document.querySelector('#navTabDropdown .custom-options');
-        if (navTabDropdownOptions) {
-            const autoTabOption = navTabDropdownOptions.querySelector('label[for="nav-toggle-autoTab"]');
-            if (autoTabOption) {
-                autoTabOption.style.display = enabled ? 'block' : 'none';
-                if (!enabled) {
-                    const checkbox = autoTabOption.querySelector('input');
-                    if (checkbox && checkbox.checked) {
-                        checkbox.checked = false;
-                        checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                }
-            }
-        }
-    
-        if (window.updateActiveNavLink) {
-            window.updateActiveNavLink();
+        // This ensures the navigation bar correctly updates its layout
+        if (window.updateNavVisibility) {
+            window.updateNavVisibility();
         }
     }
 
+    function applyUiDebugMode(enabled) {
+        const body = document.body;
+        const panelId = 'ui-debug-panel';
+        let panel = document.getElementById(panelId);
+        const boxModelOverlay = document.getElementById('ui-debug-box-model-overlay');
+
+        if (enabled) {
+            body.classList.add('ui-debug-mode-active');
+            if (!panel) {
+                panel = document.createElement('div');
+                panel.id = panelId;
+                body.appendChild(panel);
+            }
+            panel.style.display = 'block';
+            if (boxModelOverlay) boxModelOverlay.style.display = 'block';
+            document.addEventListener('mouseover', handleUiDebugMouseover);
+            document.addEventListener('click', handleUiDebugClick, true); // Use capture phase
+        } else {
+            body.classList.remove('ui-debug-mode-active');
+            if (panel) panel.style.display = 'none';
+            if (boxModelOverlay) boxModelOverlay.style.display = 'none';
+            document.removeEventListener('mouseover', handleUiDebugMouseover);
+            document.removeEventListener('click', handleUiDebugClick, true);
+        }
+    }
+
+    function handleUiDebugClick(e) {
+        if (e.ctrlKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            const target = e.target;
+            if (target.id === 'ui-debug-panel' || target.closest('#ui-debug-panel')) return;
+            
+            console.log('--- UI Debug: Element Logged ---');
+            console.dir(target);
+            showNotification('Element logged to console.', 'info');
+        }
+    }
+
+    function handleUiDebugMouseover(e) {
+        const panel = document.getElementById('ui-debug-panel');
+        const boxModelOverlay = document.getElementById('ui-debug-box-model-overlay');
+        if (!panel || !boxModelOverlay) return;
+
+        const target = e.target;
+        if (target.id === 'ui-debug-panel' || panel.contains(target) || target.closest('#ui-debug-box-model-overlay')) {
+            boxModelOverlay.style.display = 'none';
+            return;
+        }
+
+        const style = window.getComputedStyle(target);
+
+        // --- Update Box Model Visualization (only on Ctrl key) ---
+        if (e.ctrlKey) {
+            boxModelOverlay.style.display = 'block';
+            const rect = target.getBoundingClientRect();
+            
+            const marginOverlay = boxModelOverlay.querySelector('.ui-debug-margin');
+            const paddingOverlay = boxModelOverlay.querySelector('.ui-debug-padding');
+            const contentOverlay = boxModelOverlay.querySelector('.ui-debug-content');
+    
+            const marginTop = parseFloat(style.marginTop);
+            const marginLeft = parseFloat(style.marginLeft);
+            const paddingTop = parseFloat(style.paddingTop);
+            const paddingLeft = parseFloat(style.paddingLeft);
+    
+            marginOverlay.style.width = `${rect.width + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight)}px`;
+            marginOverlay.style.height = `${rect.height + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)}px`;
+            marginOverlay.style.top = `${rect.top - marginTop}px`;
+            marginOverlay.style.left = `${rect.left - marginLeft}px`;
+    
+            paddingOverlay.style.width = `${rect.width}px`;
+            paddingOverlay.style.height = `${rect.height}px`;
+            paddingOverlay.style.top = `${rect.top}px`;
+            paddingOverlay.style.left = `${rect.left}px`;
+    
+            contentOverlay.style.width = `${rect.width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)}px`;
+            contentOverlay.style.height = `${rect.height - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)}px`;
+            contentOverlay.style.top = `${rect.top + paddingTop}px`;
+            contentOverlay.style.left = `${rect.left + paddingLeft}px`;
+        } else {
+            boxModelOverlay.style.display = 'none';
+        }
+
+        // --- Update Inspector Panel ---
+        const getParentInfo = (el) => {
+            const view = el.closest('.view');
+            const section = el.closest('.home-section, .settings-section, .misc-section, .bypass-section, .updater-container > div, .monitor-container, .history-container > div, .device-list-section, .auto-bypass-section');
+            const modal = el.closest('.modal, .lookup-panel');
+
+            if (modal) return `Modal: #${modal.id}`;
+            if (view) return `View: #${view.id}`;
+            if (section) return `Section: .${section.className.split(' ')[0]}`;
+            return 'N/A';
+        };
+
+        const dataAttrs = Object.entries(target.dataset).map(([key, value]) => `<li><strong>data-${key}:</strong> ${value}</li>`).join('');
+        
+        let stateInfo = '';
+        if (target.tagName === 'INPUT') {
+            stateInfo += `<li><strong>Checked:</strong> ${target.checked}</li>`;
+        }
+        if (target.disabled !== undefined) {
+            stateInfo += `<li><strong>Disabled:</strong> ${target.disabled}</li>`;
+        }
+        stateInfo += `<li><strong>Visible:</strong> ${style.display !== 'none' && style.visibility !== 'hidden'}</li>`;
+
+        panel.innerHTML = `
+            <div class="ui-debug-header">UI Inspector <span class="ui-debug-hint">(Ctrl+Click to log)</span></div>
+            <ul>
+                <li><strong>Element:</strong> &lt;${target.tagName.toLowerCase()}&gt;</li>
+                <li><strong>ID:</strong> ${target.id || 'none'}</li>
+                <li><strong>Classes:</strong> ${target.className || 'none'}</li>
+                <li><strong>Parent:</strong> ${getParentInfo(target)}</li>
+            </ul>
+            <div class="ui-debug-group">
+                <div class="ui-debug-subheader">State</div>
+                <ul>${stateInfo}</ul>
+            </div>
+            <div class="ui-debug-group">
+                <div class="ui-debug-subheader">Computed Style</div>
+                <ul>
+                    <li><strong>Font Size:</strong> ${style.fontSize}</li>
+                    <li><strong>Color:</strong> ${style.color}</li>
+                    <li><strong>Background:</strong> ${style.backgroundColor}</li>
+                </ul>
+            </div>
+            ${dataAttrs ? `<div class="ui-debug-group"><div class="ui-debug-subheader">Data Attributes</div><ul>${dataAttrs}</ul></div>` : ''}
+        `;
+    }
+
+    function applyNetworkDebugMode(enabled) {
+        const panel = document.getElementById('network-debug-panel');
+        if (!panel) return;
+
+        if (enabled) {
+            panel.style.display = 'block';
+            let requestCount = 0;
+            let errorCount = 0;
+            let totalLatency = 0;
+            let peakLatency = 0;
+
+            panel.innerHTML = `
+                <div class="network-debug-header">
+                    <span class="nd-title">Network Debugger</span>
+                    <button id="nd-clear-btn" class="nd-clear-btn">Clear</button>
+                </div>
+                <div class="network-debug-stats">
+                    <div class="nd-stat"><span id="nd-req-count" class="nd-stat-value">0</span><span class="nd-stat-label">Total</span></div>
+                    <div class="nd-stat"><span id="nd-err-count" class="nd-stat-value">0</span><span class="nd-stat-label">Errors</span></div>
+                    <div class="nd-stat"><span id="nd-avg-latency" class="nd-stat-value">0ms</span><span class="nd-stat-label">Avg Latency</span></div>
+                    <div class="nd-stat"><span id="nd-peak-latency" class="nd-stat-value">0ms</span><span class="nd-stat-label">Peak Latency</span></div>
+                </div>
+                <div id="network-debug-log" class="network-debug-log"></div>
+            `;
+
+            const logContainer = document.getElementById('network-debug-log');
+            const reqCountEl = document.getElementById('nd-req-count');
+            const errCountEl = document.getElementById('nd-err-count');
+            const avgLatencyEl = document.getElementById('nd-avg-latency');
+            const peakLatencyEl = document.getElementById('nd-peak-latency');
+            const clearBtn = document.getElementById('nd-clear-btn');
+
+            clearBtn.addEventListener('click', () => {
+                logContainer.innerHTML = '';
+                requestCount = 0;
+                errorCount = 0;
+                totalLatency = 0;
+                peakLatency = 0;
+                reqCountEl.textContent = '0';
+                errCountEl.textContent = '0';
+                avgLatencyEl.textContent = '0ms';
+                peakLatencyEl.textContent = '0ms';
+            });
+
+            if (!originalFetch) {
+                originalFetch = window.fetch;
+            }
+
+            window.fetch = async function(...args) {
+                const startTime = performance.now();
+                const [url, options] = args;
+                const method = options?.method || 'GET';
+                
+                const response = await originalFetch(...args);
+                
+                const endTime = performance.now();
+                const latency = Math.round(endTime - startTime);
+
+                requestCount++;
+                totalLatency += latency;
+                if (latency > peakLatency) peakLatency = latency;
+                if (!response.ok) errorCount++;
+
+                reqCountEl.textContent = requestCount;
+                errCountEl.textContent = errorCount;
+                avgLatencyEl.textContent = `${Math.round(totalLatency / requestCount)}ms`;
+                peakLatencyEl.textContent = `${peakLatency}ms`;
+
+                const logEntry = document.createElement('div');
+                logEntry.className = 'log-entry';
+                
+                let statusClass = 'status-success';
+                if (response.status >= 500) statusClass = 'status-server-error';
+                else if (response.status >= 400) statusClass = 'status-client-error';
+
+                logEntry.innerHTML = `
+                    <span class="log-method">${method}</span>
+                    <span class="log-url">${url}</span>
+                    <span class="log-status ${statusClass}">${response.status}</span>
+                    <span class="log-latency">${latency}ms</span>
+                `;
+                logContainer.prepend(logEntry);
+
+                return response;
+            };
+
+        } else {
+            panel.style.display = 'none';
+            panel.innerHTML = '';
+            if (originalFetch) {
+                window.fetch = originalFetch;
+                originalFetch = null;
+            }
+        }
+    }
+
+    function initializeTooltips() {
+        const bypassModeInfo = document.getElementById('bypassModeInfo');
+        const cpuThreads = currentSettings.cpu_thread_count || 'N/A';
+        const parallelMultiplier = overrideMultiplierInput ? overrideMultiplierInput.value : (currentSettings.override_multiplier || 2);
+    }
+
     const allSettingsControls = [
-        hideWebsiteToggle, autoOpenToggle, debugModeDropdown, bypassModeDropdown,
+        hideWebsiteToggle, autoOpenToggle, autoUpdateToggle, debugModeDropdown, bypassModeDropdown,
         runAsAdminToggle, hardwareRngToggle, pbccToggle, acceleratedBypassingToggle,
         serverBackendDropdown, scanningMethodDropdown, parallelScansToggle,
-        betaFeaturesToggle, overrideMultiplierInput
+        betaFeaturesToggle, overrideMultiplierInput, uiDebugModeToggle, networkDebugModeToggle
     ];
 
     allSettingsControls.forEach(control => {
@@ -264,6 +552,21 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('A control in allSettingsControls is null or undefined.');
         }
     });
+
+    if (applySettingsBtn) {
+        applySettingsBtn.addEventListener('click', showConfirmationModal);
+    }
+
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', () => {
+            saveSettings();
+            hideConfirmationModal();
+        });
+    }
+
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', hideConfirmationModal);
+    }
 
     if (overrideMultiplierInput) {
         overrideMultiplierInput.addEventListener('input', updateMultiplierDescription);
@@ -275,143 +578,132 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    applySettingsBtn.addEventListener('click', showConfirmationModal);
-    confirmBtn.addEventListener('click', () => {
-        hideConfirmationModal();
-        saveSettings();
-    });
-    cancelBtn.addEventListener('click', hideConfirmationModal);
-
     // --- Tooltip Creation ---
     function createInfoTooltip(infoElementId, contentHtml) {
-        const infoElement = document.getElementById(infoElementId);
-        if (!infoElement) return;
-
-        const tooltipId = `${infoElementId}-tooltip`;
-
-        // Remove any existing tooltip to prevent duplicates
-        const existingTooltip = document.getElementById(tooltipId);
-        if (existingTooltip) {
-            existingTooltip.remove();
+        if (window.createTooltip) {
+            window.createTooltip(infoElementId, contentHtml);
         }
-
-        const tooltip = document.createElement('div');
-        tooltip.id = tooltipId;
-        tooltip.className = 'tooltip';
-        tooltip.style.position = 'fixed';
-        tooltip.style.zIndex = '99999';
-        tooltip.style.display = 'none';
-        tooltip.style.opacity = '0';
-        tooltip.style.visibility = 'hidden';
-        tooltip.style.transition = 'opacity 0.3s, visibility 0.3s';
-        tooltip.innerHTML = contentHtml;
-        document.body.appendChild(tooltip);
-
-        let shouldHideTooltip = false;
-
-        const showTooltip = () => {
-            shouldHideTooltip = false;
-            const rect = infoElement.getBoundingClientRect();
-            tooltip.style.left = `${rect.right + 10}px`;
-            tooltip.style.top = `${rect.top - 10}px`;
-            tooltip.style.display = 'block';
-            setTimeout(() => {
-                tooltip.style.opacity = '1';
-                tooltip.style.visibility = 'visible';
-            }, 10);
-        };
-
-        const hideTooltip = () => {
-            shouldHideTooltip = true;
-            setTimeout(() => {
-                if (shouldHideTooltip) {
-                    tooltip.style.opacity = '0';
-                    tooltip.style.visibility = 'hidden';
-                    setTimeout(() => {
-                        tooltip.style.display = 'none';
-                    }, 300);
-                }
-            }, 50);
-        };
-
-        infoElement.addEventListener('mouseenter', showTooltip);
-        infoElement.addEventListener('mouseleave', hideTooltip);
-        tooltip.addEventListener('mouseenter', () => { shouldHideTooltip = false; });
-        tooltip.addEventListener('mouseleave', hideTooltip);
     }
 
-    // Tooltip for Bypass Mode
-    createInfoTooltip('bypassModeInfo', `
-        <h3>Bypass Mode Options</h3>
-        <div class="tooltip-item">
-            <h4>Registry Method</h4>
-            <p>Modifies the Windows registry to change the MAC address. Doesn't require system restart in some cases.</p>
-        </div>
-        <div class="tooltip-item">
-            <h4>CMD Method</h4>
-            <p>Uses command line (netsh) to change the MAC address. Requires system restart.</p>
-        </div>
-        <div class="tooltip-warning">
-            Note: Both methods will send a notification and require admin, registry allows more methods to be possible.
-        </div>
-    `);
+    let tooltipsInitialized = false;
+    function initializeTooltips() {
+        if (tooltipsInitialized) return;
+        tooltipsInitialized = true;
 
-    // Tooltip for PBCC
-    createInfoTooltip('pbccInfo', `
-        <h3>Post-Bypass Connectivity Check (PBCC)</h3>
-        <div class="tooltip-item">
-            <p>When enabled, the application will perform a quick check to verify internet connectivity immediately after a MAC address bypass is completed.</p>
-        </div>
-        <div class="tooltip-warning">
-            Note: This can add a small delay to the bypass process but provides instant feedback on whether the bypass was successful.
-        </div>
-    `);
+        // Tooltip for UI Debug Mode
+        createInfoTooltip('uiDebugModeInfo', `
+            <h3>UI Debug Mode</h3>
+            <div class="tooltip-item">
+                <p>Enables a suite of tools for inspecting the UI in real-time, including an inspector panel for element properties, a box model overlay, and click-to-log functionality in the console.</p>
+            </div>
+            <div class="tooltip-warning">
+                Hold <strong>Ctrl</strong> and hover over an element to see its box model (margin, padding). <strong>Ctrl+Click</strong> an element to log it to the developer console.
+            </div>
+        `);
 
-    // Tooltip for Scanning Method
-    createInfoTooltip('scanningMethodInfo', `
-        <h3>Scanning Method</h3>
-        <div class="tooltip-item">
-            <h4>Divide and Conquer</h4>
-            <p>Prioritizes common device IPs (like .1 and .254) and then scans the rest of the network range. Generally faster.</p>
-        </div>
-        <div class="tooltip-item">
-            <h4>Sequential</h4>
-            <p>Scans all IP addresses in order from 1 to 254. More predictable but can be slower.</p>
-        </div>
-    `);
+        // Tooltip for Network Debug Mode
+        createInfoTooltip('networkDebugModeInfo', `
+            <h3>Network Debugger</h3>
+            <div class="tooltip-item">
+                <p>Enables a real-time panel to monitor all client-server communication (API requests).</p>
+            </div>
+            <div class="tooltip-warning">
+                The panel shows all outgoing 'fetch' requests, their HTTP status, and response time, along with server-side statistics.
+            </div>
+        `);
 
-    createInfoTooltip('parallelScansInfo', `
-        <h3>Parallel Scans</h3>
-        <div class="tooltip-item">
-            <p>Uses multithreading to scan multiple IPs at once, significantly speeding up discovery, with that it will use more CPU utilization.</p>
-        </div>
-        <div class="tooltip-warning">
-            Your system has <strong><span id="cpuThreadCountSpan">N/A</span></strong> threads available. We will use <strong id="parallelScansMultiplier">2</strong> times the amount for faster scanning.
-        </div>
-    `);
+        // Tooltip for Bypass Mode
+        createInfoTooltip('bypassModeInfo', `
+            <h3>Bypass Mode Options</h3>
+            <div class="tooltip-item">
+                <h4>Registry Method</h4>
+                <p>Modifies the Windows registry to change the MAC address. Doesn't require system restart in some cases.</p>
+            </div>
+            <div class="tooltip-item">
+                <h4>CMD Method</h4>
+                <p>Uses command line (netsh) to change the MAC address. Requires system restart.</p>
+            </div>
+            <div class="tooltip-warning">
+                Note: Both methods will send a notification and require admin, registry allows more methods to be possible.
+            </div>
+        `);
 
-    // Tooltip for Override Multiplier
-    createInfoTooltip('overrideMultiplierInfo', `
-        <h3>Override Multiplier</h3>
-        <div class="tooltip-item">
-            <p>This value is multiplied by your system's logical processor count to set the number of threads for parallel scanning.</p>
-        </div>
-        <div class="tooltip-warning">
-            Increasing this can speed up scans but will also increase CPU usage. The default value is 4.
-            <br><strong>Current total: <span id="multiplierCalculationSpan">...</span></strong>
-        </div>
-    `);
-    
-    // Tooltip for Accelerated Bypassing
-    createInfoTooltip('acceleratedBypassingInfo', `
-        <h3>Accelerated Bypassing</h3>
-        <div class="tooltip-item">
-            <p>When enabled, the application will automatically perform a soft restart of your network adapters after a successful bypass using a faster PowerShell command. This is the recommended setting for most users.</p>
-        </div>
-        <div class="tooltip-warning">
-            This method is generally faster than a full disable/enable cycle and reduces the time your network is unavailable. Disable this only if you prefer to restart the adapter manually.
-        </div>
-    `);
+        // Tooltip for PBCC
+        createInfoTooltip('pbccInfo', `
+            <h3>Post-Bypass Connectivity Check (PBCC)</h3>
+            <div class="tooltip-item">
+                <p>When enabled, the application will perform a quick check to verify internet connectivity immediately after a MAC address bypass is completed.</p>
+            </div>
+            <div class="tooltip-warning">
+                Note: This can add a small delay to the bypass process but provides instant feedback on whether the bypass was successful.
+            </div>
+        `);
+
+        // Tooltip for Scanning Method
+        createInfoTooltip('scanningMethodInfo', `
+            <h3>Scanning Method</h3>
+            <div class="tooltip-item">
+                <h4>Divide and Conquer</h4>
+                <p>Prioritizes common device IPs (like .1 and .254) and then scans the rest of the network range. Generally faster.</p>
+            </div>
+            <div class="tooltip-item">
+                <h4>Sequential</h4>
+                <p>Scans all IP addresses in order from 1 to 254. More predictable but can be slower.</p>
+            </div>
+            <div class="tooltip-item">
+                <h4>Hybrid/Adaptive</h4>
+                <p>Uses a faster arp-based discovery to find online devices, then resolves details.</p>
+            </div>
+            <div class="tooltip-item">
+                <h4>Smart</h4>
+                <p>Single ARP sweep to discover hosts instantly, reuses MACs for vendor, and resolves hostnames on a tight budget.</p>
+            </div>
+        `);
+
+        {
+            const cpuThreads = currentSettings.cpu_thread_count || 'N/A';
+            const parallelMultiplier = overrideMultiplierInput ? overrideMultiplierInput.value : (currentSettings.override_multiplier || 2);
+            createInfoTooltip('parallelScansInfo', `
+                <h3>Parallel Scans</h3>
+                <div class="tooltip-item">
+                    <p>Uses multithreading to scan multiple IPs at once, significantly speeding up discovery. This will increase CPU utilization proportionally.</p>
+                </div>
+                <div class="tooltip-warning">
+                    Your system has <strong><span id="cpuThreadCountSpan">${cpuThreads}</span></strong> threads available. We will use <strong id="parallelScansMultiplier">${parallelMultiplier}</strong> times the amount for faster scanning.
+                </div>
+            `);
+        }
+
+        {
+            const cpuThreads = currentSettings.cpu_thread_count || 'N/A';
+            const multiplier = overrideMultiplierInput ? overrideMultiplierInput.value : (currentSettings.override_multiplier || 4);
+            const totalText = (cpuThreads !== 'N/A') ? `${multiplier} x ${cpuThreads} threads = ${parseInt(multiplier,10) * parseInt(cpuThreads,10)} total threads` : 'N/A';
+            createInfoTooltip('overrideMultiplierInfo', `
+                <h3>Override Multiplier</h3>
+                <div class="tooltip-item">
+                    <p>This value is multiplied by your system's logical processor count to set the number of threads for parallel scanning.</p>
+                </div>
+                <div class="tooltip-warning">
+                    Increasing this can speed up scans but will also increase CPU usage. The default value is ${currentSettings.override_multiplier || 4}.
+                    <br><strong>Current total: <span id="multiplierCalculationSpan">${totalText}</span></strong>
+                </div>
+            `);
+        }
+        
+        createInfoTooltip('acceleratedBypassingInfo', `
+            <h3>Accelerated Bypassing</h3>
+            <div class="tooltip-item">
+                <p>When enabled, the application will automatically perform a soft restart of your network adapters after a successful bypass using a faster powershell command.</p>
+            </div>
+            <div class="tooltip-warning">
+                While this can be faster for users it can also create more problems unless you know how to fix a unstable connection do not use.
+            </div>
+        `);
+    }
+
+    const settingsFab = document.getElementById('settings-fab');
+    if (settingsFab) {
+    }
 
     if (openWinHotspotSettingsBtn) {
         openWinHotspotSettingsBtn.addEventListener('click', () => {

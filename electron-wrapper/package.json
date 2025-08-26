@@ -1,52 +1,41 @@
 {
   "name": "network-related-thing",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "network related thing",
   "main": "main.js",
-  "type": "commonjs",
+  "type": "module",
+  "author": "countervolts",
+  "license": "MIT",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
-    "rebuild": "electron-rebuild"
+    "postinstall": "electron-builder install-app-deps"
   },
-  "author": "countervolts",
-  "license": "MIT",
   "devDependencies": {
-    "electron": "^28.2.0",
-    "electron-builder": "^24.9.1",
-    "electron-rebuild": "^3.2.9"
+    "electron": "^31.0.1",
+    "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.countervolts.network-related-thing",
+    "appId": "com.countervolts.networkrelatedthing",
     "productName": "Network Related Thing",
+    "artifactName": "${productName}.${ext}",
     "files": [
-      "**/*"
+      "main.js",
+      "package.json"
     ],
     "extraResources": [
       {
-        "from": "../dist",
-        "to": "app",
-        "filter": [
-          "**/*"
-        ]
+        "from": "../server.exe",
+        "to": "app/server.exe"
+      },
+      {
+        "from": "../favicon.ico",
+        "to": "favicon.ico"
       }
     ],
     "win": {
       "target": "portable",
-      "icon": "../favicon.ico",
-      "requestedExecutionLevel": "requireAdministrator",
-      "asarUnpack": [
-        "app.manifest"
-      ]
-    },
-    "portable": {
-      "artifactName": "server-portable.exe"
+      "icon": "../favicon.ico"
     }
-  },
-  "dependencies": {
-    "electron-is-dev": "^3.0.1",
-    "portfinder": "^1.0.37",
-    "tree-kill": "^1.2.2",
-    "wait-on": "^8.0.3"
   }
 }

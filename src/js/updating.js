@@ -8,16 +8,44 @@ document.addEventListener('DOMContentLoaded', () => {
     const updateProgressBar = document.getElementById('updateProgressBar');
     const updateProgressText = document.getElementById('updateProgressText');
     
-    const versionElement = document.querySelector('.version');
-    const currentVersion = versionElement ? versionElement.textContent.trim() : 'v1.0';
+    const versionSelect = document.getElementById('versionSelect');
+    const downgradeBtn = document.getElementById('downgradeBtn');
+
+    const versionDisplayElement = document.getElementById('version-display');
+    let currentVersion = 'v1.0'; // fallback until loaded from server
     
     let latestVersion = '';
     let latestReleaseUrl = '';
     let downloadUrl = '';
-    
+    let allReleases = [];
+
+    async function loadCurrentVersion() {
+        try {
+            // Fetch version from the dedicated plain text endpoint
+            const resp = await fetch('/version.txt');
+            if (!resp.ok) throw new Error('Failed to fetch version');
+            const text = await resp.text();
+            const val = text ? text.replace(/^v/, '') : null;
+            if (val !== null) {
+                currentVersion = `v${val}`;
+                if (versionDisplayElement) versionDisplayElement.textContent = currentVersion;
+                if (currentVersionElement) currentVersionElement.textContent = currentVersion.replace(/^v/, '');
+            }
+        } catch (err) {
+            console.error('Failed to load current version from version.txt:', err);
+            if (versionDisplayElement && !versionDisplayElement.textContent) {
+                versionDisplayElement.textContent = 'v?.?';
+            }
+        }
+    }
+
+    // call early
+    loadCurrentVersion();
+
     async function checkForUpdates() {
         updateStatusElement.textContent = 'Checking for updates...';
         updateStatusElement.className = 'update-status-box checking';
+        // ensure currentVersionElement shows the settings version
         currentVersionElement.textContent = currentVersion.replace(/^v/, '');
         downloadUpdateBtn.disabled = true;
         
@@ -44,8 +72,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateStatusElement.className = 'update-status-box update-available';
                     downloadUpdateBtn.disabled = false;
                 } else {
-                    updateStatusElement.textContent = 'Up to Date';
-                    updateStatusElement.className = 'update-status-box up-to-date';
+                    const isDevBuild = compareVersions(currentVersion, latestVersion);
+                    if (isDevBuild) {
+                        updateStatusElement.textContent = 'Dev Build';
+                        updateStatusElement.className = 'update-status-box dev-build';
+                    } else {
+                        updateStatusElement.textContent = 'Up to Date';
+                        updateStatusElement.className = 'update-status-box up-to-date';
+                    }
                     downloadUpdateBtn.disabled = true;
                 }
                 
@@ -119,16 +153,57 @@ document.addEventListener('DOMContentLoaded', () => {
                 changelogContainer.innerHTML = '<p class="error">Error loading changelog information.</p>';
             });
     }
-    
-    document.addEventListener('DOMContentLoaded', () => {
-        // Call this when the updater tab is shown or when checking for updates
-        const checkUpdateBtn = document.getElementById('checkUpdateBtn');
-        if (checkUpdateBtn) {
-            checkUpdateBtn.addEventListener('click', () => {
-                loadChangelog(true); // Load latest changelog when checking for updates
-            });
+
+    async function loadAllReleases() {
+        try {
+            const response = await fetch('/updater/releases');
+            if (!response.ok) {
+                throw new Error('Failed to fetch releases');
+            }
+            allReleases = await response.json();
+            
+            versionSelect.innerHTML = '';
+            if (allReleases.length > 0) {
+                allReleases.forEach(release => {
+                    const option = document.createElement('option');
+                    option.value = release.download_url;
+                    
+                    let releaseDate = '';
+                    if (release.published_at) {
+                        releaseDate = ` - ${new Date(release.published_at).toLocaleDateString()}`;
+                    }
+
+                    let label = release.version;
+                    if (release.version === latestVersion) {
+                        label += ' (Latest)';
+                    }
+                    if (release.version === currentVersion) {
+                        // Avoid duplicating the label if current is also latest
+                        if (currentVersion !== latestVersion) {
+                            label += ' (Current)';
+                        }
+                    }
+                    
+                    // Disable both current and latest versions in the dropdown
+                    if (release.version === currentVersion || release.version === latestVersion) {
+                        option.disabled = true;
+                    }
+
+                    option.textContent = label + releaseDate;
+                    versionSelect.appendChild(option);
+                });
+                versionSelect.disabled = false;
+                downgradeBtn.disabled = false;
+            } else {
+                versionSelect.innerHTML = '<option>No versions found</option>';
+            }
+        } catch (error) {
+            console.error('Error loading releases:', error);
+            versionSelect.innerHTML = '<option>Error loading versions</option>';
+            versionSelect.disabled = true;
+            downgradeBtn.disabled = true;
         }
-    });
+    }
     
     // Compare version strings (returns true if latest is newer than current)
     function compareVersions(latest, current) {
@@ -149,16 +224,17 @@ document.addEventListener('DOMContentLoaded', () => {
         return false; // Versions are equal
     }
     
-    async function downloadUpdate() {
-        if (!downloadUrl) {
+    async function downloadVersion(url, version) {
+        if (!url) {
             showNotification('Download URL not available.', 'error');
             return;
         }
         
         updateProgressContainer.style.display = 'block';
         updateProgressBar.style.width = '0%';
-        updateProgressText.textContent = 'Starting download...';
+        updateProgressText.textContent = `Starting download for ${version}...`;
         downloadUpdateBtn.disabled = true;
+        downgradeBtn.disabled = true;
         
         try {
             // Simulate progress updates while downloading
@@ -178,13 +254,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    url: downloadUrl,
-                    version: latestVersion
+                    url: url,
+                    version: version
                 })
             });
             
             clearInterval(progressInterval);
-            
             const result = await response.json();
             
             if (response.ok && result.success) {
@@ -219,24 +294,29 @@ document.addEventListener('DOMContentLoaded', () => {
             updateProgressBar.className = 'progress-bar error';
             showNotification('Failed to download update. See console for details.', 'error');
             downloadUpdateBtn.disabled = false;
+            downgradeBtn.disabled = false;
         }
     }
     
     function showNotification(message, type = 'info') {
         const container = document.getElementById('notificationContainer');
-        if (!container) return;
-        
+        if (!container) {
+            console.error('Notification container not found!');
+            return;
+        }
+
         const notification = document.createElement('div');
         notification.className = `notification ${type}`;
         notification.textContent = message;
         
         container.appendChild(notification);
         
-        // Auto-remove after 5 seconds
         setTimeout(() => {
             notification.classList.add('fade-out');
             setTimeout(() => {
-                container.removeChild(notification);
+                if (container.contains(notification)) {
+                    container.removeChild(notification);
+                }
             }, 500);
         }, 5000);
     }
@@ -246,17 +326,25 @@ document.addEventListener('DOMContentLoaded', () => {
         checkForUpdates();
         loadChangelog(); // Load changelog when checking for updates
     });
-    downloadUpdateBtn.addEventListener('click', downloadUpdate);
+    downloadUpdateBtn.addEventListener('click', () => downloadVersion(downloadUrl, latestVersion));
+    downgradeBtn.addEventListener('click', () => {
+        const selectedUrl = versionSelect.value;
+        const selectedVersion = versionSelect.options[versionSelect.selectedIndex].text.split(' ')[0];
+        downloadVersion(selectedUrl, selectedVersion);
+    });
     
     // Check for updates when the page loads
     document.addEventListener('DOMContentLoaded', () => {
         if (window.location.hash === '#updater') {
             setTimeout(checkForUpdates, 500);
+            loadAllReleases();
         }
     });
     
     // Check when switching to the updater tab
     document.getElementById('updaterTab').addEventListener('click', () => {
+        loadCurrentVersion();
         setTimeout(checkForUpdates, 500);
+        loadAllReleases();
     });
 });

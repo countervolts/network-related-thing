@@ -13,12 +13,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const deepDiveContent = document.getElementById('deepDiveContent');
     const closeDeepDiveBtn = document.getElementById('closeDeepDiveBtn');
     const processSearchInput = document.getElementById('processSearchInput');
+    const processInfoPanel = document.getElementById('processInfoPanel');
+    const processInfoContent = document.getElementById('processInfoContent');
+    const closeProcessInfoBtn = document.getElementById('closeProcessInfoBtn');
     
     // State variables
     let autoRefreshInterval = null;
     let currentProcesses = [];
     let lastProcessesHash = '';
     let durationIntervals = {};
+    let processStatsCache = {}; // For persisting stats across tab changes
+    let processInfoOutsideClickHandler = null; // close on outside click
 
     // Initialize
     function init() {
@@ -57,6 +62,11 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
+        if (closeProcessInfoBtn && processInfoPanel) {
+            // Hide the close button in the Process Details panel
+            closeProcessInfoBtn.style.display = 'none';
+        }
+
         if (processSearchInput) {
             processSearchInput.addEventListener('input', (e) => {
                 const searchTerm = e.target.value.toLowerCase();
@@ -74,9 +84,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function startAutoRefresh() {
-        if (autoRefreshInterval) return; // Already running
-        refreshConnections(); // Initial refresh
-        autoRefreshInterval = setInterval(refreshConnections, 2000); // Refresh every 2 seconds
+        if (autoRefreshInterval) return;
+        refreshConnections();
+        autoRefreshInterval = setInterval(refreshConnections, 2000);
     }
 
     function stopAutoRefresh() {
@@ -88,29 +98,58 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     async function refreshConnections() {
+        if (document.hidden || window.location.hash !== '#monitor') return;
+
+        const lastRefreshTime = document.getElementById('lastRefreshTime');
+        if (lastRefreshTime) lastRefreshTime.textContent = `Refreshing...`;
+
         try {
             const response = await fetch('/monitor/connections');
             const data = await response.json();
 
-            if (data && data.connections) {
-                currentProcesses = data.connections;
-                renderProcesses(currentProcesses);
+            if (response.ok) {
+                // The server sends the process list under the "connections" key.
+                currentProcesses = data.connections || [];
+                
+                // Calculate total connections from the process list
+                const totalConnections = currentProcesses.reduce((sum, proc) => sum + (proc.connection_count || 0), 0);
 
-                // Update stats
-                const totalConnections = currentProcesses.reduce((sum, proc) => sum + proc.connection_count, 0);
-                connectionCount.textContent = `${currentProcesses.length} processes, ${totalConnections} connections`;
-                lastRefreshTime.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+                renderProcesses(currentProcesses);
+                updateProcessStatsCache(currentProcesses);
+                updateConnectionCount(totalConnections);
+            } else {
+                console.error('Failed to refresh connections:', data.error);
+                connectionCount.textContent = 'Error';
             }
         } catch (error) {
             console.error('Error refreshing connections:', error);
-            connectionCount.textContent = 'Error loading connections';
+            connectionCount.textContent = 'Error';
+        } finally {
+            if (lastRefreshTime) lastRefreshTime.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
         }
+    }
+
+    function updateConnectionCount(count) {
+        const connectionCount = document.getElementById('connectionCount');
+        if (connectionCount) {
+            connectionCount.textContent = `${count} Connections`;
+        }
+    }
+
+    function updateProcessStatsCache(processes) {
+        processes.forEach(proc => {
+            if (!processStatsCache[proc.pid]) {
+                processStatsCache[proc.pid] = {};
+            }
+            // Update cache with latest data from backend
+            Object.assign(processStatsCache[proc.pid], proc);
+        });
     }
 
     function renderProcesses(processes) {
         const processesHash = JSON.stringify(processes.map(p => ({ pid: p.pid, count: p.connection_count })));
-        if (processesHash === lastProcessesHash) {
-            return; // No changes in process list, avoid full re-render
+        if (processesHash === lastProcessesHash && document.activeElement.closest('.process-item')) {
+            return; // No changes in process list, avoid full re-render if user is interacting
         }
         lastProcessesHash = processesHash;
 
@@ -139,7 +178,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             processItem.innerHTML = `
                 <div class="process-header">
-                    <span class="process-name">${proc.process_name} [${proc.pid}]</span>
+                    <span class="process-name">
+                        ${proc.process_name} [${proc.pid}]
+                        <span class="process-info-icon" data-pid="${proc.pid}" title="Show process details">?</span>
+                    </span>
                     <span class="process-connection-count">${proc.connection_count} connections</span>
                 </div>
                 <div class="connection-list" style="display: ${isExpanded ? 'block' : 'none'};"></div>
@@ -147,14 +189,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const header = processItem.querySelector('.process-header');
             const connectionList = processItem.querySelector('.connection-list');
+            const infoIcon = processItem.querySelector('.process-info-icon');
 
-            header.addEventListener('click', () => {
+            header.addEventListener('click', (e) => {
+                if (e.target.classList.contains('process-info-icon')) return;
                 const isVisible = connectionList.style.display === 'block';
                 connectionList.style.display = isVisible ? 'none' : 'block';
                 processItem.classList.toggle('expanded', !isVisible);
                 if (!isVisible) {
                     renderConnectionsForProcess(connectionList, proc.connections);
                 }
+            });
+
+            infoIcon.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showProcessInfo(proc.pid);
             });
 
             if (isExpanded) {
@@ -223,24 +272,142 @@ document.addEventListener('DOMContentLoaded', () => {
         durationIntervals = {};
     }
 
+    function getProcessUptime(createTime) {
+        if (!createTime) return 'N/A';
+        const now = new Date().getTime() / 1000;
+        const duration = Math.floor(now - createTime);
+        
+        const d = Math.floor(duration / 86400);
+        const h = Math.floor((duration % 86400) / 3600);
+        const m = Math.floor((duration % 3600) / 60);
+
+        let parts = [];
+        if (d > 0) parts.push(`${d}d`);
+        if (h > 0) parts.push(`${h}h`);
+        if (m > 0) parts.push(`${m}m`);
+        
+        return parts.join(' ') || '< 1m';
+    }
+
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function showProcessInfo(pid) {
+        const processData = processStatsCache[pid];
+        if (!processData) {
+            processInfoContent.innerHTML = `<div class="error-message">Could not find details for PID ${pid}.</div>`;
+            processInfoPanel.style.display = 'block';
+            setupProcessInfoOutsideClick();
+            return;
+        }
+
+        const uptime = getProcessUptime(processData.create_time);
+        const readBytes = processData.io_read_bytes || 0;
+        const writeBytes = processData.io_write_bytes || 0;
+        const totalData = readBytes + writeBytes;
+        const conns = Array.isArray(processData.connections) ? processData.connections : [];
+        const uniqueRemotes = new Set(conns.map(c => c.remote_ip)).size;
+        const currentConns = processData.connection_count || 0;
+        const dropped = processData.dropped_connections || 0;
+        const totalObserved = currentConns + dropped;
+        const dropRate = totalObserved > 0 ? ((dropped / totalObserved) * 100).toFixed(1) + '%' : '0%';
+
+        processInfoContent.innerHTML = `
+            <div class="process-info-grid">
+                <!-- Basics -->
+                <div class="process-info-item">
+                    <div class="process-info-label">PROCESS</div>
+                    <div class="process-info-value">${sanitizeHTML(processData.process_name)}</div>
+                </div>
+                <div class="process-info-item">
+                    <div class="process-info-label">PID</div>
+                    <div class="process-info-value">${processData.pid}</div>
+                </div>
+                
+                <!-- Runtime / Memory -->
+                <div class="process-info-item">
+                    <div class="process-info-label">TIME ACTIVE</div>
+                    <div class="process-info-value">${uptime}</div>
+                </div>
+                <div class="process-info-item">
+                    <div class="process-info-label">MEMORY (RSS)</div>
+                    <div class="process-info-value">${formatBytes(processData.memory_rss || 0)}</div>
+                </div>
+                
+                <!-- I/O -->
+                <div class="process-info-item">
+                    <div class="process-info-label">DATA READ</div>
+                    <div class="process-info-value">${formatBytes(readBytes)}</div>
+                </div>
+                <div class="process-info-item">
+                    <div class="process-info-label">DATA WRITTEN</div>
+                    <div class="process-info-value">${formatBytes(writeBytes)}</div>
+                </div>
+                <div class="process-info-item">
+                    <div class="process-info-label">TOTAL I/O</div>
+                    <div class="process-info-value">${formatBytes(totalData)}</div>
+                </div>
+                
+                <!-- Connections -->
+                <div class="process-info-item">
+                    <div class="process-info-label">CURRENT CONNECTIONS</div>
+                    <div class="process-info-value">${currentConns}</div>
+                </div>
+                <div class="process-info-item">
+                    <div class="process-info-label">UNIQUE REMOTES</div>
+                    <div class="process-info-value">${uniqueRemotes}</div>
+                </div>
+                <div class="process-info-item">
+                    <div class="process-info-label">DROPPED CONNECTIONS</div>
+                    <div class="process-info-value">${dropped}</div>
+                </div>
+                <div class="process-info-item">
+                    <div class="process-info-label">DROP RATE</div>
+                    <div class="process-info-value">${dropRate}</div>
+                </div>
+            </div>
+        `;
+        processInfoPanel.style.display = 'block';
+        setupProcessInfoOutsideClick();
+    }
+
+    function setupProcessInfoOutsideClick() {
+        // Delay to avoid immediate close from the opening click
+        setTimeout(() => {
+            if (processInfoOutsideClickHandler) {
+                document.removeEventListener('click', processInfoOutsideClickHandler, true);
+                processInfoOutsideClickHandler = null;
+            }
+            processInfoOutsideClickHandler = (e) => {
+                if (!processInfoPanel.contains(e.target)) {
+                    processInfoPanel.style.display = 'none';
+                    document.removeEventListener('click', processInfoOutsideClickHandler, true);
+                    processInfoOutsideClickHandler = null;
+                }
+            };
+            document.addEventListener('click', processInfoOutsideClickHandler, true);
+        }, 0);
+    }
+
     function getDurationString(startTime) {
         if (!startTime) return 'N/A';
-        const now = new Date().getTime() / 1000;
-        const duration = Math.floor(now - startTime);
-        
-        const h = Math.floor(duration / 3600);
-        const m = Math.floor((duration % 3600) / 60);
-        const s = duration % 60;
+        const now = Date.now() / 1000;
+        const seconds = Math.floor(now - startTime);
 
-        return [
-            h > 0 ? `${h}h` : '',
-            m > 0 ? `${m}m` : '',
-            `${s}s`
-        ].filter(Boolean).join(' ') || '0s';
+        if (seconds < 60) return `${seconds}s`;
+        const minutes = Math.floor(seconds / 60);
+        const remSeconds = seconds % 60;
+        return `${minutes}m ${remSeconds}s`;
     }
 
     // WHOIS lookup functionality
     async function performWhoisLookup(ip) {
+        whoisContent.innerHTML = '<div class="loading-spinner"></div>';
         if (window.showNotification) {
             window.showNotification(`Performing WHOIS lookup for ${ip}...`, 'info');
         }
@@ -386,5 +553,6 @@ style.textContent = `
         font-size: 0.9em;
         margin-left: 2px;
     }
+    #closeProcessInfoBtn { display: none !important; }
 `;
 document.head.appendChild(style);

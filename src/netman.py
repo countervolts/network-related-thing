@@ -21,7 +21,6 @@ class GarpSpoofer:
         self.gateway_mac = self.resolve_mac(self.gateway_ip)
 
     def start(self):
-        """Starts the monitoring and spoofing threads."""
         Thread(target=self.monitor_arp, daemon=True).start()
         Thread(target=self.spoof_engine, daemon=True).start()
 

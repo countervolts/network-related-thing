@@ -17,3 +17,5 @@ release/
 
 # internal testing/cleaning/releasing files
 /internal
+todo.md
+qa.md

@@ -59,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         list.innerHTML = filtered.map(item => {
             const method = item.method ? item.method.charAt(0).toUpperCase() + item.method.slice(1) : 'N/A';
-            const mode = item.mac_mode ? item.mac_mode.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'N/A';
+            const mode = (item.mac_mode || 'N/A').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
             
             const canRevert = item.previousMac && item.previousMac.toLowerCase() !== 'n/a';
             const revertButton = canRevert
@@ -123,6 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const scanningMethod = item.scanning_method 
                 ? item.scanning_method.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) 
                 : 'N/A';
+            const duration = item.duration ? `${item.duration.toFixed(2)}s` : 'N/A';
 
             return `
             <div class="history-card scan-card" data-scan-id="${item.id}">
@@ -137,6 +138,10 @@ document.addEventListener('DOMContentLoaded', () => {
                      <div class="detail-row">
                         <span class="detail-label">Devices Found:</span>
                         <span class="detail-value">${item.deviceCount}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Duration:</span>
+                        <span class="detail-value">${duration}</span>
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">Scanning Method:</span>
@@ -218,10 +223,13 @@ document.addEventListener('DOMContentLoaded', () => {
         bypassMethodFilter.innerHTML = '<option value="all">All Methods</option>' + 
             applicationMethods.map(m => `<option value="${m.toLowerCase()}">${m.charAt(0).toUpperCase() + m.slice(1)}</option>`).join('');
 
-        // Populate Mode filter (e.g., Randomized)
+        // Populate Mode filter (e.g., Randomized, Manual)
         const generationModes = [...new Set(fullBypassHistory.map(item => item.mac_mode || 'N/A'))];
         bypassModeFilter.innerHTML = '<option value="all">All Modes</option>' + 
-            generationModes.map(m => `<option value="${m.toLowerCase()}">${m.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>`).join('');
+            generationModes.map(m => {
+                const formattedName = m.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                return `<option value="${m.toLowerCase()}">${formattedName}</option>`;
+            }).join('');
     };
 
     const loadHistory = async () => {

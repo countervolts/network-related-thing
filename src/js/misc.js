@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
+    const toggleConsoleBtn = document.getElementById('toggleConsoleBtn');
     const clearConsoleBtn = document.getElementById('clearConsoleBtn');
     const clearLocalStorageBtn = document.getElementById('clearLocalStorageBtn');
     const downloadOuiBtn = document.getElementById('downloadOuiBtn');
@@ -8,6 +9,37 @@ document.addEventListener('DOMContentLoaded', () => {
     const notificationContainer = document.getElementById('notificationContainer');
     const restartAdaptersBtn = document.getElementById('restartAdaptersBtn');
     const resetSettingsBtn = document.getElementById('resetSettingsBtn');
+
+    async function updateConsoleButton() {
+        if (!toggleConsoleBtn) return;
+        try {
+            const response = await fetch('/misc/console-status');
+            const data = await response.json();
+            if (response.ok) {
+                toggleConsoleBtn.textContent = data.status === 'visible' ? 'Hide Console' : 'Show Console';
+            }
+        } catch (error) {
+            console.error('Failed to get console status:', error);
+        }
+    }
+
+    if (toggleConsoleBtn) {
+        toggleConsoleBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/misc/toggle-console-visibility', { method: 'POST' });
+                const data = await response.json();
+                if (response.ok) {
+                    window['showNotification'](data.message, 'success');
+                    updateConsoleButton();
+                } else {
+                    window['showNotification'](data.error || 'Failed to toggle console.', 'error');
+                }
+            } catch (error) {
+                console.error('Error toggling console visibility:', error);
+                window['showNotification']('An error occurred while toggling console visibility.', 'error');
+            }
+        });
+    }
 
     // Make showNotification available globally
     window['showNotification'] = function(message, type = 'success') {
@@ -140,19 +172,63 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (downloadOuiBtn) {
         downloadOuiBtn.addEventListener('click', async () => {
-            window['showNotification']('Downloading OUI file...', 'info');
+            const isUpdate = downloadOuiBtn.textContent.trim() === 'Update';
+            let initialVendorCount = 0;
+
+            // Get the current vendor count before updating
+            if (isUpdate) {
+                try {
+                    const infoResponse = await fetch('/misc/oui-info');
+                    if (infoResponse.ok) {
+                        const infoData = await infoResponse.json();
+                        if (infoData.exists) {
+                            initialVendorCount = infoData.vendor_count;
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Could not get initial OUI info, defaulting to 0.", e);
+                }
+            }
+
+            window['showNotification'](isUpdate ? 'Updating OUI file...' : 'Downloading OUI file...', 'info');
         
             try {
-                const response = await fetch('/misc/download-oui', { method: 'GET' });
-                const data = await response.json();
-                if (response.ok) {
-                    window['showNotification'](data.message, 'success'); 
-                } else {
-                    window['showNotification'](data.error || 'Failed to download OUI file.', 'error'); 
+                const downloadResponse = await fetch('/misc/download-oui', { method: 'GET' });
+                if (!downloadResponse.ok) {
+                    const errorData = await downloadResponse.json();
+                    throw new Error(errorData.error || 'Failed to download OUI file.');
                 }
+
+                // After download, get the new info
+                const newInfoResponse = await fetch('/misc/oui-info');
+                if (!newInfoResponse.ok) {
+                    throw new Error('Could not retrieve new OUI file information.');
+                }
+                const newInfoData = await newInfoResponse.json();
+                const newVendorCount = newInfoData.vendor_count || 0;
+                
+                let notificationMessage = 'OUI file updated successfully.';
+                if (isUpdate) {
+                    const diff = newVendorCount - initialVendorCount;
+                    if (diff > 0) {
+                        notificationMessage = `OUI file updated. Added ${diff.toLocaleString()} new vendors.`;
+                    } else if (diff < 0) {
+                        notificationMessage = `OUI file updated. ${Math.abs(diff).toLocaleString()} vendors removed.`;
+                    } else {
+                        notificationMessage = 'OUI file is already up to date.';
+                    }
+                }
+                
+                window['showNotification'](notificationMessage, 'success');
+
+                // Refresh the OUI info tooltip
+                if (window.loadOuiFileInfo) {
+                    window.loadOuiFileInfo();
+                }
+
             } catch (error) {
-                console.error('Error downloading OUI file:', error);
-                window['showNotification']('An error occurred while downloading the OUI file.', 'error');
+                console.error('Error during OUI file update:', error);
+                window['showNotification'](error.message, 'error');
             }
         });
     }
@@ -270,4 +346,5 @@ document.addEventListener('DOMContentLoaded', () => {
     // This will be moved to ui.js
     // initCustomization();
     updateHistoryFileSizes();
+    updateConsoleButton();
 });

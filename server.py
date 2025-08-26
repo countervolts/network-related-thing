@@ -2,12 +2,12 @@ import time
 START_TIME = time.time()
 _CLIENT_LOADED = False
 
-from src.bypass import transport_names, neftcfg_search, init_bypass, IGNORE_LIST, restart_all_adapters, get_adapter_name, get_active_network_adapter
+from src.bypass import transport_names, neftcfg_search, init_bypass, IGNORE_LIST, restart_all_adapters, get_adapter_name, rand0m_hex
 from flask import Flask, jsonify, send_from_directory, redirect, request, Response, stream_with_context
 from hypercorn.asyncio import serve as hypercorn_serve
 from src.ping import scan_network, get_default_gateway
 from src.netman import GarpSpoofer, ping_manager
-from src.monitor import connection_monitor
+from src.monitor import connection_monitor, ConnectionMonitor
 from werkzeug.exceptions import NotFound 
 from hypercorn.config import Config
 from getmac import get_mac_address
@@ -15,12 +15,17 @@ from functools import lru_cache
 from flask_cors import CORS
 from threading import Lock
 from waitress import serve
+from PIL import Image
 import subprocess
 import threading
 import platform
 import datetime
 import logging
 import asyncio
+import win32con
+import win32gui
+import pystray
+import random
 import socket
 import ctypes
 import winreg
@@ -31,6 +36,10 @@ import uuid
 import sys
 import re
 import os
+
+STATIC_ROOT = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, 'frozen', False):
+    STATIC_ROOT = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable)) or STATIC_ROOT
 
 def is_running_in_electron():
     return os.environ.get('RUNNING_IN_ELECTRON') == '1' or \
@@ -43,6 +52,7 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 SETTINGS_FILE = os.path.join(os.getenv('APPDATA'), "ayosbypasser", "settings.json")
+SETTINGS_FILE = os.path.join(os.getenv('APPDATA'), "ayosbypasser", "settings.json")
 HISTORY_FOLDER = os.path.join(os.getenv('APPDATA'), "ayosbypasser", "historystorage")
 if not os.path.exists(HISTORY_FOLDER):
     os.makedirs(HISTORY_FOLDER)
@@ -52,6 +62,38 @@ BYPASS_HISTORY_FILE = os.path.join(os.getenv('APPDATA'), "ayosbypasser", "bypass
 APPDATA_LOCATION = os.path.join(os.getenv('APPDATA'), "ayosbypasser")
 OUI_FILE = os.path.join(APPDATA_LOCATION, "oui.txt")
 OUI_URL = "https://standards-oui.ieee.org/"
+
+VERSION_FILE = os.path.join(APPDATA_LOCATION, "version.txt")
+APP_VERSION = "1.6"
+
+def read_version_file():
+    try:
+        if os.path.exists(VERSION_FILE):
+            with open(VERSION_FILE, "r", encoding="utf-8") as vf:
+                v = vf.read().strip()
+                if v:
+                    return v.replace('v', '')
+    except Exception as e:
+        print(f"\033[93m[WARN] Failed to read version file: {e}\033[0m")
+    return None
+
+def write_version_file(version):
+    try:
+        if not os.path.exists(APPDATA_LOCATION):
+            os.makedirs(APPDATA_LOCATION, exist_ok=True)
+        with open(VERSION_FILE, "w", encoding="utf-8") as vf:
+            vf.write(str(version).replace('v', ''))
+    except Exception as e:
+        print(f"\033[93m[WARN] Failed to write version file: {e}\033[0m")
+
+@app.route('/version.txt', methods=['GET'])
+def get_version_txt():
+    try:
+        version = read_version_file() or APP_VERSION
+        return Response(str(version), mimetype='text/plain')
+    except Exception as e:
+        app.logger.error(f"Failed to get version.txt: {e}")
+        return Response("Error: Could not retrieve version", status=500, mimetype='text/plain')
 
 LOG_FILE = os.path.join(APPDATA_LOCATION, "latest.log")
 
@@ -71,13 +113,98 @@ DEFAULT_SETTINGS = {
     "run_as_admin": False,
     "hardware_rng": True,
     "pbcc_enabled": False,
-    "accelerated_bypassing": True,
+    "accelerated_bypassing": False,
     "server_backend": "waitress",
     "scanning_method": "divide_and_conquer",
     "parallel_scans": True,
     "override_multiplier": 4,
-    "beta_features": False
+    "beta_features": False,
+    "auto_update": True,
+    "ui_debug_mode": False,
+    "network_debug_mode": False
 }
+
+# --- Globals for Console Hiding ---
+console_hwnd = None
+tray_thread = None
+tray_icon = None
+
+def get_console_hwnd():
+    return ctypes.windll.kernel32.GetConsoleWindow()
+
+def create_icon_image():
+    try:
+        icon_path = os.path.join(STATIC_ROOT, 'favicon.ico')
+        if os.path.exists(icon_path):
+            return Image.open(icon_path)
+    except Exception as e:
+        print(f"\033[93m[WARN] Could not load favicon.ico: {e}. Using a default icon.\033[0m")
+
+def show_console(icon, item):
+    global console_hwnd, tray_icon
+    if console_hwnd:
+        win32gui.ShowWindow(console_hwnd, win32con.SW_SHOW)
+        try:
+            # This might fail if called from a background thread (like the web server)
+            # It's not critical, showing the window is enough.
+            win32gui.SetForegroundWindow(console_hwnd)
+        except Exception:
+            pass # Ignore error if we can't bring it to the foreground
+    if tray_icon:
+        try:
+            tray_icon.stop()
+        except Exception:
+            pass
+
+def exit_app(icon, item):
+    global tray_icon
+    if tray_icon:
+        tray_icon.stop()
+    graceful_shutdown(signal.SIGTERM, None)
+
+def setup_tray_icon():
+    global tray_icon
+    image = create_icon_image()
+    menu = (
+        pystray.MenuItem('Show Console', show_console, default=True),
+        pystray.MenuItem('Exit', exit_app)
+    )
+    tray_icon = pystray.Icon("BypassControl", image, "Network Related Thing", menu)
+    tray_icon.run()
+
+@app.route('/misc/toggle-console-visibility', methods=['POST'])
+def toggle_console_visibility():
+    global console_hwnd, tray_thread
+    
+    if not console_hwnd:
+        console_hwnd = get_console_hwnd()
+
+    if not console_hwnd:
+        return jsonify({"error": "Could not get console window handle."}), 500
+
+    is_visible = win32gui.IsWindowVisible(console_hwnd)
+
+    if is_visible:
+        win32gui.ShowWindow(console_hwnd, win32con.SW_HIDE)
+        if tray_thread is None or not tray_thread.is_alive():
+            tray_thread = threading.Thread(target=setup_tray_icon, daemon=True)
+            tray_thread.start()
+        return jsonify({"status": "hidden", "message": "Console hidden to system tray."})
+    else:
+        show_console(None, None)
+        return jsonify({"status": "visible", "message": "Console is now visible."})
+
+@app.route('/misc/console-status', methods=['GET'])
+def get_console_status():
+    global console_hwnd
+    if not console_hwnd:
+        console_hwnd = get_console_hwnd()
+    
+    if not console_hwnd:
+        return jsonify({"status": "unknown", "error": "Could not get console window handle."})
+
+    is_visible = win32gui.IsWindowVisible(console_hwnd)
+    return jsonify({"status": "visible" if is_visible else "hidden"})
 
 network_controller = GarpSpoofer()
 
@@ -282,6 +409,110 @@ def auto_configure():
     except Exception as e:
         return jsonify({'error': f'Failed to configure task: {str(e)}'}), 500
 
+_VENDOR_CACHE = {}
+_VENDOR_CACHE_MTIME = 0
+_VENDOR_CACHE_LOCK = threading.Lock()
+
+def _parse_oui_line(line: str):
+    if "(hex)" in line:
+        parts = line.split("(hex)")
+    elif "(base 16)" in line:
+        parts = line.split("(base 16)")
+    else:
+        return None, None
+    oui_raw = parts[0].strip()
+    vendor = parts[1].strip()
+    oui = oui_raw.replace("-", "").replace(":", "").upper()
+    if len(oui) != 6 or not all(c in "0123456789ABCDEF" for c in oui):
+        return None, None
+    return oui, vendor
+
+def _load_vendor_cache(force: bool = False):
+    # BUGFIX: correct global name (_VENDOR_CACHE_MTIME), not "__VENDOR_CACHE_MTIME"
+    global _VENDOR_CACHE, _VENDOR_CACHE_MTIME
+    with _VENDOR_CACHE_LOCK:
+        try:
+            mtime = os.path.getmtime(OUI_FILE)
+        except FileNotFoundError:
+            _VENDOR_CACHE = {}
+            _VENDOR_CACHE_MTIME = 0
+            return
+
+        # cache hit
+        if not force and _VENDOR_CACHE and _VENDOR_CACHE_MTIME == mtime:
+            return
+
+        vendors = {}
+        # errors='ignore' to tolerate weird encodings in large files
+        with open(OUI_FILE, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                oui, vendor = _parse_oui_line(line)
+                if oui and vendor and oui not in vendors:
+                    vendors[oui] = vendor
+
+        _VENDOR_CACHE = vendors
+        _VENDOR_CACHE_MTIME = mtime
+
+@app.route('/bypass/vendors', methods=['GET'])
+def get_vendors():
+    # cached, filterable, limited result set
+    if not os.path.exists(OUI_FILE):
+        return jsonify({"error": "OUI file not found. Please download it from the settings."}), 404
+
+    _load_vendor_cache()
+    q = (request.args.get('q') or '').strip().lower()
+    try:
+        limit = int(request.args.get('limit', '100'))
+        limit = max(1, min(500, limit))
+    except ValueError:
+        limit = 100
+
+    items = _VENDOR_CACHE.items()
+    if q:
+        q_oui = q.replace(":", "").replace("-", "")
+        items = (
+            (oui, vendor) for (oui, vendor) in items
+            if q in vendor.lower() or oui.lower().startswith(q_oui)
+        )
+
+    # Sort by vendor name for stable UI, then apply limit
+    items = sorted(items, key=lambda kv: kv[1])[:limit]
+
+    return jsonify({oui: vendor for (oui, vendor) in items})
+
+@app.route('/bypass/generate-mac', methods=['POST'])
+def generate_mac_from_vendor():
+    data = request.json
+    oui = data.get('oui')
+    if not oui or len(oui) != 6:
+        return jsonify({"error": "Valid 6-character OUI is required."}), 400
+    
+    random_part = ''.join(random.choices('0123456789ABCDEF', k=6))
+    generated_mac = oui + random_part
+    
+    # format it nicely
+    formatted_mac = ':'.join(generated_mac[i:i+2] for i in range(0, 12, 2)).upper()
+    
+    return jsonify({"mac": formatted_mac})
+
+@app.route('/bypass/generate-valid-mac', methods=['POST'])
+def generate_valid_mac():
+    data = request.json
+    use_hardware_rng = data.get('hardware_rng', True)
+    
+    try:
+        # Use the 'randomized' mode from bypass.py which creates a valid Unicast LAA MAC
+        new_mac, instruction = rand0m_hex(mode='randomized', use_hardware_rng=use_hardware_rng)
+        print(f"\033[94m[DEBUG] Generated valid MAC: {new_mac} using {instruction}\033[0m")
+        
+        # Format it nicely for display
+        formatted_mac = ':'.join(new_mac[i:i+2] for i in range(0, 12, 2)).upper()
+        
+        return jsonify({"mac": formatted_mac})
+    except Exception as e:
+        print(f"\033[91m[ERROR] Failed to generate valid MAC: {e}\033[0m")
+        return jsonify({"error": "Failed to generate valid MAC address"}), 500
+
 @app.route('/settings/get', methods=['GET'])
 def get_setting():
     key = request.args.get('key')
@@ -364,6 +595,25 @@ def clear_history():
     except Exception as e:
         return jsonify({"error": f"Failed to clear history: {str(e)}"}), 500
 
+@app.route('/misc/oui-info', methods=['GET'])
+def get_oui_info():
+    if not os.path.exists(OUI_FILE):
+        return jsonify({"exists": False})
+    
+    try:
+        _load_vendor_cache() 
+        vendor_count = len(set(_VENDOR_CACHE.values())) if _VENDOR_CACHE else 0
+        file_size = os.path.getsize(OUI_FILE)
+        last_modified = os.path.getmtime(OUI_FILE)
+        
+        return jsonify({
+            "exists": True,
+            "vendor_count": vendor_count,
+            "size": file_size,
+            "last_modified": last_modified
+        })
+    except Exception as e:
+        return jsonify({"error": f"Failed to get OUI info: {str(e)}"}), 500
 
 @app.route('/network/disable', methods=['POST'])
 def disable_device():
@@ -437,6 +687,7 @@ def load_settings():
     with open(SETTINGS_FILE, "r") as f:
         user_settings = json.load(f)
 
+    # Ensure version/default keys from DEFAULT_SETTINGS exist
     updated_settings = {key: user_settings.get(key, DEFAULT_SETTINGS[key]) for key in DEFAULT_SETTINGS}
 
     for key in DEFAULT_SETTINGS:
@@ -487,7 +738,7 @@ def save_history(file_path, data):
     with open(file_path, "w") as f:
         json.dump(data, f, indent=4)
 
-def log_scan_history(scan_type, device_count, results, scanning_method):
+def log_scan_history(scan_type, device_count, results, scanning_method, duration):
     history = load_history(SCAN_HISTORY_FILE) or [] 
     scan_id = str(uuid.uuid4())
     filename = f"{scan_id}.json"
@@ -500,7 +751,8 @@ def log_scan_history(scan_type, device_count, results, scanning_method):
         "type": scan_type,
         "deviceCount": device_count,
         "rawJsonUrl": f"/history/json/{filename}",
-        "scanning_method": scanning_method
+        "scanning_method": scanning_method,
+        "duration": duration
     })
     save_history(SCAN_HISTORY_FILE, history)
 
@@ -572,6 +824,44 @@ def batch_ping_devices():
             }
     
     return jsonify(results)
+
+@app.route('/monitor/connections', methods=['GET'])
+def monitor_connections():
+    try:
+        data = connection_monitor.get_connections()
+        if settings.get("debug_mode", "off") == "full":
+            app.logger.debug(f"/monitor/connections -> {len(data)} processes")
+        return jsonify({
+            "connections": data,
+            "timestamp": time.time()
+        })
+    except Exception as e:
+        app.logger.error(f"/monitor/connections error: {e}")
+        return jsonify({"error": "Failed to retrieve connections"}), 500
+
+@app.route('/monitor/whois', methods=['GET'])
+def monitor_whois():
+    ip = request.args.get('ip')
+    if not ip:
+        return jsonify({"success": False, "error": "Missing ip parameter"}), 400
+    try:
+        result = connection_monitor.perform_whois_lookup(ip)
+        return jsonify({"success": True, "result": result})
+    except Exception as e:
+        app.logger.error(f"/monitor/whois error ({ip}): {e}")
+        return jsonify({"success": False, "error": "WHOIS lookup failed"}), 500
+
+@app.route('/monitor/deep-dive', methods=['GET'])
+def monitor_deep_dive():
+    ip = request.args.get('ip')
+    if not ip:
+        return jsonify({"success": False, "error": "Missing ip parameter"}), 400
+    try:
+        result = connection_monitor.perform_deep_dive(ip)
+        return jsonify({"success": True, "result": result})
+    except Exception as e:
+        app.logger.error(f"/monitor/deep-dive error ({ip}): {e}")
+        return jsonify({"success": False, "error": "Deep dive failed"}), 500
 
 def clear_expired_ping_cache():
     with ping_lock:
@@ -695,7 +985,7 @@ def restart_specific_adapter(adapter_name):
         )
         
         if settings.get("debug_mode", "off") == "full":
-            print(f"\033[94m[DEBUG] PowerShell output: {result.stdout}\033[0m")
+            print(f"\033[94m[DEBUG] Powershell output: {result.stdout}\033[0m")
 
         time.sleep(0.2) # Short delay for link negotiation
         
@@ -703,7 +993,7 @@ def restart_specific_adapter(adapter_name):
         return True
         
     except subprocess.CalledProcessError as e:
-        print(f"\033[91m[ERROR] Failed to restart adapter {adapter_name} using PowerShell: {e.stderr}\033[0m")
+        print(f"\033[91m[ERROR] Failed to restart adapter {adapter_name} using Powershell: {e.stderr}\033[0m")
         return False
     except Exception as e:
         print(f"\033[91m[ERROR] An unexpected error occurred while restarting adapter {adapter_name}: {e}\033[0m")
@@ -776,6 +1066,20 @@ def revert_mac():
     except Exception as e:
         return jsonify({"error": f"Failed to revert MAC address: {str(e)}"}), 500
 
+@app.route('/scan/ports')
+def scan_ports_route():
+    ip = request.args.get('ip')
+    if not ip:
+        return jsonify({"error": "IP address is required"}), 400
+    
+    try:
+        monitor = ConnectionMonitor()
+        open_ports = monitor._scan_common_ports(ip)
+        return jsonify({"ports": open_ports})
+    except Exception as e:
+        print(f"\033[91m[ERROR] Port scan for {ip} failed: {e}\033[0m")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/bypass/adapters')
 def get_adapters():
     try:
@@ -815,6 +1119,7 @@ def bypass_change_mac():
     data = request.json
     transport = data.get('transport')
     mode = data.get('mode', 'standard')
+    manual_mac = data.get('manual_mac') 
     use_hardware_rng = data.get('hardware_rng', True)
     accelerated_bypassing = settings.get("accelerated_bypassing", True)
     
@@ -842,7 +1147,7 @@ def bypass_change_mac():
         app.logger.error(f"Error getting current MAC: {str(e)}")
     
     # Change the MAC address
-    new_mac = init_bypass(sub_name, mac_mode=mode, use_hardware_rng=use_hardware_rng, restart_adapters=accelerated_bypassing)
+    new_mac = init_bypass(sub_name, mac_mode=mode, use_hardware_rng=use_hardware_rng, restart_adapters=accelerated_bypassing, manual_mac=manual_mac)
     if new_mac:
         note = "MAC address changed successfully"
         # Log the change to history with mac_mode
@@ -889,7 +1194,7 @@ def download_update():
         if not os.path.exists(temp_dir):
             os.makedirs(temp_dir)
         
-        response = requests.get(download_url, stream=True)
+        response = requests.get(download_url, stream=True, timeout=30)
         if not response.ok:
             return jsonify({"success": False, "error": f"Failed to download: {response.status_code}"}), 500
         
@@ -899,7 +1204,14 @@ def download_update():
         
         with open(os.path.join(temp_dir, "version.txt"), 'w') as f:
             f.write(version)
-        
+
+        try:
+            new_version_value = version.replace('v', '')
+            write_version_file(new_version_value)
+            print(f"\033[92m[UPDATE] Wrote VERSION_FILE -> {new_version_value}\033[0m")
+        except Exception as e:
+            print(f"\033[93m[WARN] Could not write VERSION_FILE: {e}\033[0m")
+
         return jsonify({"success": True, "message": "Update downloaded successfully"})
     
     except Exception as e:
@@ -913,10 +1225,15 @@ def restart_application():
             
             update_dir = os.path.join(os.getenv('APPDATA'), "ayosbypasser", "updates")
             update_file = os.path.join(update_dir, "server.exe")
+            version_file = os.path.join(update_dir, "version.txt")
             
-            if os.path.exists(update_file):
+            if os.path.exists(update_file) and os.path.exists(version_file):
+                with open(version_file, 'r') as f:
+                    version = f.read().strip()
+
                 desktop_path = os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop')
-                desktop_exe = os.path.join(desktop_path, "server.exe")
+                new_exe_filename = f"server_{version}.exe"
+                desktop_exe = os.path.join(desktop_path, new_exe_filename)
                 
                 batch_path = os.path.join(update_dir, "update.bat")
                 with open(batch_path, 'w') as f:
@@ -1034,6 +1351,49 @@ def get_changelog():
         if settings.get("debug_mode", "off") in ["basic", "full"]:
             print(f"\033[91m[ERROR] Failed to process changelog: {e}\033[0m")
         return jsonify({"error": f"Failed to process changelog: {str(e)}"}), 500
+
+@app.route('/updater/releases', methods=['GET'])
+def get_all_releases():
+    import requests
+    try:
+        owner = "countervolts"
+        repo = "network-related-thing"
+        api_url = f"https://api.github.com/repos/{owner}/{repo}/releases"
+        
+        response = requests.get(
+            api_url,
+            headers={
+                "Accept": "application/vnd.github.v3+json",
+                "User-Agent": "ReleaseFetchApp"
+            },
+            timeout=10
+        )
+        response.raise_for_status()
+        
+        releases_data = response.json()
+        versions = []
+        
+        for release in releases_data:
+            tag_name = release.get("tag_name")
+            if not tag_name:
+                continue
+            
+            published_at = release.get("published_at")
+            
+            server_exe_asset = next((asset for asset in release.get('assets', []) if asset['name'] == 'server.exe'), None)
+            if server_exe_asset:
+                versions.append({
+                    "version": tag_name,
+                    "download_url": server_exe_asset.get("browser_download_url"),
+                    "published_at": published_at
+                })
+        
+        return jsonify(versions)
+        
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": f"Failed to fetch releases from GitHub: {str(e)}"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Failed to process releases: {str(e)}"}), 500
 
 @app.route('/system/info')
 def get_system_info():
@@ -1306,11 +1666,12 @@ def basic_scan():
             result["hostname"] = "Skipped"
             result["vendor"] = "Skipped"
 
-        log_scan_history("Basic", len(results), results, scanning_method)
+        end_time = time.time()
+        duration = end_time - start_time
+        log_scan_history("Basic", len(results), results, scanning_method, duration)
         print(f"\033[92m[INFO] Basic Scan completed. {len(results)} devices found.\033[0m")
         
-        end_time = time.time()  
-        print(f"\033[94m[DEBUG] Basic scan duration: {end_time - start_time:.2f} seconds\033[0m")
+        print(f"\033[94m[DEBUG] Basic scan duration: {duration:.2f} seconds\033[0m")
         
         return jsonify(results)
     except Exception as e:
@@ -1354,11 +1715,12 @@ def full_scan():
                 result["mac"] = local_mac
                 break
         
-        log_scan_history("Full", len(results), results, scanning_method)
+        end_time = time.time()
+        duration = end_time - start_time
+        log_scan_history("Full", len(results), results, scanning_method, duration)
         print(f"\033[92m[INFO] Full Scan completed. {len(results)} devices found.\033[0m")
         
-        end_time = time.time() 
-        print(f"\033[94m[DEBUG] Full scan duration: {end_time - start_time:.2f} seconds\033[0m")
+        print(f"\033[94m[DEBUG] Full scan duration: {duration:.2f} seconds\033[0m")
         
         return jsonify({
             "results": results,
@@ -1424,6 +1786,14 @@ def update_logging_level(debug_mode):
             werkzeug_logger.setLevel(logging.DEBUG)
             app.logger.setLevel(logging.DEBUG)
     
+    # Silence noisy queue / access loggers regardless of mode
+    for noisy in ['waitress.queue', 'waitress', 'hypercorn.error', 'hypercorn.access']:
+        try:
+            logging.getLogger(noisy).setLevel(logging.ERROR)
+            # Optional: to nuke them entirely use: logging.getLogger(noisy).disabled = True
+        except Exception:
+            pass
+
     # Update levels of existing handlers
     for handler in werkzeug_logger.handlers:
         handler.setLevel(console_level)
@@ -1431,14 +1801,18 @@ def update_logging_level(debug_mode):
     for handler in app.logger.handlers:
         handler.setLevel(console_level)
     
-    # No registration of new handlers or filters
     if settings.get("debug_mode", "off") in ["basic", "full"]:
         print(f"\033[94m[DEBUG] Logging level updated to: {debug_mode}\033[0m")
 
 @app.before_request
 def log_request():
+    # keep existing logging, but also log remote addr and static root for debugging missing files
+    try:
+        client = request.remote_addr
+    except Exception:
+        client = 'unknown'
     if is_running_in_electron() or settings.get("debug_mode", "off") != "off":
-        app.logger.debug(f"Request: {request.method} {request.path}")
+        app.logger.debug(f"Request: {request.method} {request.path} from {client} (STATIC_ROOT={STATIC_ROOT})")
         if request.is_json and request.get_data():
             try:
                 app.logger.debug(f"Request data: {request.get_json(silent=True)}")
@@ -1451,12 +1825,11 @@ def log_response(response):
         app.logger.debug(f"Response: {response.status}")
     return response
 
-@app.route('/settings', methods=['GET'])
-def get_settings():
-    global settings
-    settings_with_cpu = settings.copy()
-    settings_with_cpu['cpu_thread_count'] = os.cpu_count() or 'N/A'
-    return jsonify(settings_with_cpu)
+@app.route('/settings')
+def settings_route():
+    settings_data = settings.copy()
+    settings_data['cpu_thread_count'] = os.cpu_count()
+    return jsonify(settings_data)
 
 @app.route('/settings', methods=['POST'])
 def update_settings():
@@ -1480,25 +1853,42 @@ def update_settings():
 
 @app.route('/exit', methods=['POST'])
 def exit_server():
-    def shutdown():
-        func = request.environ.get('werkzeug.server.shutdown')
-        if func is None:
-            raise RuntimeError('Not running with the Werkzeug Server')
-        func()
-
     print("\033[93m[INFO] Exit button clicked. Shutting down the server...\033[0m")
-    graceful_shutdown(signal.SIGINT, None) 
-    shutdown()
+    graceful_shutdown(signal.SIGINT, None)
     return jsonify({"message": "Server shutting down gracefully."})
 
 @app.route('/')
 def index():
-    return send_from_directory('.', 'index.html')
+    # Serve the index.html from the runtime static root
+    return send_from_directory(STATIC_ROOT, 'index.html')
 
+@app.route('/favicon.ico')
+def serve_favicon():
+    try:
+        return send_from_directory(STATIC_ROOT, 'favicon.ico')
+    except NotFound:
+        return jsonify({"error": "File not found"}), 404
+
+
+
+@app.route('/src/<path:filename>')
+def serve_src_files(filename):
+    try:
+        src_root = os.path.join(STATIC_ROOT, 'src')
+        # debug log
+        app.logger.debug(f"Serving /src/{filename} from {src_root}")
+        return send_from_directory(src_root, filename)
+    except NotFound:
+        return jsonify({"error": "File not found"}), 404
+
+# fallback catch-all (keep last)
 @app.route('/<path:path>')
 def static_files(path):
     try:
-        return send_from_directory('.', path)
+        # Normalize to prevent pt
+        safe_path = os.path.normpath(path).lstrip(os.sep)
+        app.logger.debug(f"Fallback static request for {safe_path} (STATIC_ROOT={STATIC_ROOT})")
+        return send_from_directory(STATIC_ROOT, safe_path)
     except NotFound:
         return jsonify({"error": "File not found"}), 404
 
@@ -1511,7 +1901,7 @@ def has_perms():
 def permission_giver():
     try:
         script_path = os.path.abspath(sys.argv[0])
-        ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{script_path}"', None, 1)
+        ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{script_path}"', None, None, 1)
         sys.exit(0)
     except Exception as e:
         input(f"Problem with giving permissions: {e}")
@@ -1521,11 +1911,21 @@ def server_start():
     print("\033[92m[INFO] Server has started. Clearing client-side disabled devices.\033[0m")
     return jsonify({"message": "Server started. Clear disabled devices."})
 
-def graceful_shutdown(_signal_received, _frame):
-    shutdown_msgs = []
-    shutdown_msgs.append("\033[93m[INFO] Graceful shutdown initiated...\033[0m")
-    global DISABLED_DEVICES
+@app.route('/api/client-loaded', methods=['POST'])
+def client_loaded():
+    global _CLIENT_LOADED
+    first = not _CLIENT_LOADED
+    _CLIENT_LOADED = True
+    return jsonify({
+        "ack": True,
+        "already_loaded": not first,
+        "server_start_time": START_TIME
+    })
 
+def graceful_shutdown(signal_received, frame):
+    shutdown_msgs = []
+    shutdown_msgs.append(f"\033[93m[INFO] Graceful shutdown initiated (signal={signal_received})...\033[0m")
+    global DISABLED_DEVICES
     # Re-enable all disabled devices
     for device in DISABLED_DEVICES:
         try:
@@ -1533,15 +1933,10 @@ def graceful_shutdown(_signal_received, _frame):
             network_controller.restore_device(mac)
         except Exception as e:
             print(f"\033[91m[ERROR] Failed to re-enable device {mac}: {e}\033[0m")
-
-    # Save the disabled devices list to the file
     save_disabled_devices()
     shutdown_msgs.append("\033[92m[INFO] Disabled devices list saved on shutdown.\033[0m")
-
-    # Clear the disabled devices list
     DISABLED_DEVICES = []
     shutdown_msgs.append("\033[92m[INFO] All disabled devices have been re-enabled.\033[0m")
-
     shutdown_msgs.append("\033[92m[INFO] Server shutting down gracefully.\033[0m")
     print('\n'.join(shutdown_msgs))
     sys.exit(0)
@@ -1597,7 +1992,7 @@ def stream_ping():
     
     response = Response(stream_with_context(event_stream()), mimetype="text/event-stream")
     response.headers['Cache-Control'] = 'no-cache'
-    response.headers['X-Accel-Buffering'] = 'no'  # Disable buffering for nginx
+    response.headers['X-Accel-Buffering'] = 'no'
     return response
 
 @app.route('/api/ping/stop', methods=['POST'])
@@ -1671,6 +2066,7 @@ def diagnose():
             result["bypass_file_error"] = str(e)
     
     # Network info
+
     try:
         result["local_ip"] = get_local_ip()
         result["subnet"] = get_subnet()
@@ -1679,75 +2075,24 @@ def diagnose():
     
     return jsonify(result)
 
-@app.route('/monitor/connections', methods=['GET'])
-def get_outbound_connections():
+@app.route('/debug/network-stats', methods=['GET'])
+def get_network_stats():
+    if not settings.get("network_debug_mode"):
+        return jsonify({"error": "Network debug mode is not enabled."}), 403
+    
     try:
-        connections = connection_monitor.get_connections()
-        return jsonify({"connections": connections})
+        ping_cache_size = len(PING_CACHE)
+        whois_cache_size = len(connection_monitor.whois_cache)
+        active_sse_streams = len(active_ping_connections)
+
+        return jsonify({
+            "ping_cache_size": ping_cache_size,
+            "whois_cache_size": whois_cache_size,
+            "active_sse_streams": active_sse_streams
+        })
     except Exception as e:
-        if settings.get("debug_mode", "off") in ["basic", "full"]:
-            print(f"\033[91m[ERROR] Failed to get connections: {e}\033[0m")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/monitor/whois', methods=['GET'])
-def whois_lookup():
-    try:
-        ip = request.args.get('ip')
-        if not ip:
-            return jsonify({"success": False, "error": "No IP address provided"}), 400
-            
-        result = connection_monitor.perform_whois_lookup(ip)
-        return jsonify({"success": True, "result": result})
-    except Exception as e:
-        if settings.get("debug_mode", "off") in ["basic", "full"]:
-            print(f"\033[91m[ERROR] Failed to perform WHOIS lookup: {e}\033[0m")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-@app.route('/settings/reset', methods=['POST'])
-def reset_settings():
-    global settings
-    try:
-        # Overwrite the settings file with the defaults
-        with open(SETTINGS_FILE, "w") as f:
-            json.dump(DEFAULT_SETTINGS, f, indent=4)
-        
-        # Update the global settings variable
-        settings = DEFAULT_SETTINGS.copy()
-        
-        print("\033[93m[INFO] All settings have been reset to their default values.\033[0m")
-        
-        # Update logging to reflect default debug mode
-        update_logging_level(settings.get("debug_mode", "off"))
-
-        return jsonify({"message": "Settings have been reset to default."})
-    except Exception as e:
-        print(f"\033[91m[ERROR] Failed to reset settings: {e}\033[0m")
-        return jsonify({"error": "Failed to reset settings."}), 500
-
-@app.route('/monitor/deep-dive', methods=['GET'])
-def deep_dive_lookup():
-    try:
-        ip = request.args.get('ip')
-        if not ip:
-            return jsonify({"success": False, "error": "No IP address provided"}), 400
-        
-        result = connection_monitor.perform_deep_dive(ip)
-        return jsonify({"success": True, "result": result})
-    except Exception as e:
-        if settings.get("debug_mode", "off") in ["basic", "full"]:
-            print(f"\033[91m[ERROR] Failed to perform deep dive: {e}\033[0m")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-@app.route('/api/client-loaded', methods=['POST'])
-def client_loaded():
-    global _CLIENT_LOADED
-    if not _CLIENT_LOADED:
-        _CLIENT_LOADED = True
-        end_time = time.time()
-        elapsed = end_time - START_TIME
-        print(f"\n\033[92m[PERF] Client fully loaded in {elapsed:.2f} seconds.\033[0m\n")
-    return jsonify({"status": "ok"}), 200
-        
 def find_available_port(ports_to_try):
     for port in ports_to_try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -1759,8 +2104,256 @@ def find_available_port(ports_to_try):
                 continue
     return None
 
+def auto_update_check(settings):
+    if not settings.get("auto_update", True):
+        return
+
+    print("\033[94m[UPDATE] Checking for updates...\033[0m")
+    import requests
+
+    try:
+        # Read current version from the dedicated version file (canonical source), prefix with 'v'
+        file_ver = read_version_file()
+        current_version = f"v{file_ver or APP_VERSION}"
+        
+        print(f"\033[94m[UPDATE] Current version: {current_version}\033[0m")
+
+        api_url = "https://api.github.com/repos/countervolts/network-related-thing/releases/latest"
+        response = requests.get(api_url, timeout=5)
+        response.raise_for_status()
+        release_data = response.json()
+        latest_version = release_data.get("tag_name")
+
+        if not latest_version:
+            print("\033[91m[UPDATE] Could not determine latest version.\033[0m")
+            return
+
+        print(f"\033[94m[UPDATE] Latest version: {latest_version}\033[0m")
+
+        latest_parts = list(map(int, latest_version.replace('v', '').split('.')))
+        current_parts = list(map(int, current_version.replace('v', '').split('.')))
+        
+        is_newer = False
+        for i in range(max(len(latest_parts), len(current_parts))):
+            latest_part = latest_parts[i] if i < len(latest_parts) else 0
+            current_part = current_parts[i] if i < len(current_parts) else 0
+            if latest_part > current_part:
+                is_newer = True
+                break
+            if latest_part < current_part:
+                break
+        
+        if not is_newer:
+            print("\033[92m[UPDATE] You are on the latest version.\033[0m")
+            return
+
+        print(f"\033[93m[UPDATE] New version available: {latest_version}. Downloading...\033[0m")
+
+        server_exe_asset = next((asset for asset in release_data.get('assets', []) if asset['name'] == 'server.exe'), None)
+        if not server_exe_asset:
+            print("\033[91m[UPDATE] server.exe not found in the latest release.\033[0m")
+            return
+    
+        download_url = server_exe_asset['browser_download_url']
+        desktop_path = os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop')
+        new_exe_filename = f"server_{latest_version}.exe"
+        new_exe_path = os.path.join(desktop_path, new_exe_filename)
+    
+        if os.path.exists(new_exe_path):
+            print(f"\033[92m[UPDATE] Update file for version {latest_version} already exists on the Desktop. Skipping download.\033[0m")
+            return
+    
+        download_response = requests.get(download_url, stream=True)
+        download_response.raise_for_status()
+        with open(new_exe_path, 'wb') as f:
+            for chunk in download_response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        
+        print(f"\033[92m[UPDATE] Downloaded new version to {new_exe_path}\033[0m")
+
+        # 5. Run the new exe and exit
+        print("\033[93m[UPDATE] Restarting with the new version...\033[0m")
+        ctypes.windll.shell32.ShellExecuteW(None, "runas", new_exe_path, None, None, 1)
+        sys.exit(0)
+
+
+    except requests.exceptions.RequestException as e:
+        print(f"\033[91m[UPDATE] Failed to check for updates: {e}\033[0m")
+    except Exception as e:
+        print(f"\033[91m[UPDATE] An error occurred during the update process: {e}\033[0m")
+
+def print_full_debug_startup_info():
+    try:
+        import psutil, urllib.request
+        internal_ip = get_local_ip()
+        external_ip = "Offline"
+        isp = "Offline"
+        try:
+            external_ip_data = urllib.request.urlopen('https://api.ipify.org?format=json', timeout=2).read()
+            external_ip = json.loads(external_ip_data)['ip']
+            isp_data = urllib.request.urlopen(f'https://ipinfo.io/{external_ip}/json', timeout=2).read()
+            isp_info = json.loads(isp_data)
+            isp = isp_info.get('org', 'Offline')
+        except Exception:
+            pass
+
+        wifi_if_keywords = ('wi-fi', 'wifi', 'wlan')
+        eth_if_keywords = ('ethernet', 'eth', 'lan')
+        net_stats = psutil.net_if_stats()
+        wifi_active = any(stat.isup and any(k in name.lower() for k in wifi_if_keywords)
+                          for name, stat in net_stats.items())
+        ethernet_active = any(stat.isup and any(k in name.lower() for k in eth_if_keywords)
+                              for name, stat in net_stats.items())
+
+        cpu_info = platform.processor()
+        cpu_threads = os.cpu_count() or 'N/A'
+        try:
+            reg_cpu_name = None
+            wmic_name = None
+            try:
+                key_path = r"HARDWARE\DESCRIPTION\System\CentralProcessor\0"
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path) as key:
+                    reg_cpu_name, _ = winreg.QueryValueEx(key, "ProcessorNameString")
+                    reg_cpu_name = reg_cpu_name.strip()
+            except Exception:
+                pass
+            try:
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                cpu_output = subprocess.check_output("wmic cpu get name", shell=True, startupinfo=startupinfo).decode('utf-8').strip()
+                lines = [l.strip() for l in cpu_output.splitlines() if l.strip()]
+                if len(lines) >= 2:
+                    wmic_name = lines[1]
+            except Exception:
+                pass
+            cpu_name = reg_cpu_name or wmic_name
+            cpu_vendor = "Unknown"
+            try:
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                vendor_output = subprocess.check_output("wmic cpu get Manufacturer", shell=True, startupinfo=startupinfo).decode('utf-8').strip()
+                vlines = [l.strip() for l in vendor_output.splitlines() if l.strip()]
+                if len(vlines) >= 2:
+                    cpu_vendor = vlines[1]
+            except Exception:
+                pass
+            if cpu_name:
+                cpu_info = f"{cpu_name} ({cpu_vendor})"
+            gpu_info = "Unknown"
+            try:
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                gpu_output = subprocess.check_output("wmic path win32_VideoController get name", shell=True, startupinfo=startupinfo).decode('utf-8').strip()
+                gpu_lines = [l.strip() for l in gpu_output.splitlines() if l.strip()]
+                for line in gpu_lines[1:]:
+                    if line and "Microsoft" not in line and not line.startswith("Standard"):
+                        gpu_info = line
+                        break
+            except Exception:
+                try:
+                    import GPUtil
+                    gpus = GPUtil.getGPUs()
+                    if gpus:
+                        gpu_info = gpus[0].name
+                except Exception:
+                    pass
+        except Exception:
+            gpu_info = "Unknown"
+
+        memory_total_gb = round(psutil.virtual_memory().total / (1024**3), 2)
+
+        storage_devices = []
+        total_storage_bytes = 0
+        for part in psutil.disk_partitions():
+            try:
+                if platform.system() == 'Windows' and ('cdrom' in part.opts or not os.path.exists(part.mountpoint)):
+                    continue
+                usage = psutil.disk_usage(part.mountpoint)
+                total_storage_bytes += usage.total
+                storage_devices.append({
+                    "device": part.device,
+                    "mount": part.mountpoint,
+                    "total_gb": round(usage.total / (1024**3), 2)
+                })
+            except Exception:
+                continue
+        total_storage_gb = round(total_storage_bytes / (1024**3), 2)
+
+        bypass_count = 0
+        if os.path.exists(BYPASS_HISTORY_FILE):
+            try:
+                with open(BYPASS_HISTORY_FILE, 'r') as f:
+                    bypass_count = len(json.load(f))
+            except Exception:
+                pass
+        basic_scan_count = 0
+        full_scan_count = 0
+        if os.path.exists(SCAN_HISTORY_FILE):
+            try:
+                with open(SCAN_HISTORY_FILE, 'r') as f:
+                    scan_history = json.load(f)
+                    basic_scan_count = sum(1 for e in scan_history if e.get('type') == 'Basic')
+                    full_scan_count = sum(1 for e in scan_history if e.get('type') == 'Full')
+            except Exception:
+                pass
+
+        print("\n\033[95m[STARTUP][DEBUG] ====== FULL DEBUG SYSTEM SNAPSHOT ======\033[0m")
+        print("\033[94m[DEBUG] Version: v%s\033[0m" % (read_version_file() or APP_VERSION))
+        print("\033[94m[DEBUG] CPU: %s\033[0m" % cpu_info)
+        print(f"\033[94m[DEBUG] CPU Threads: {cpu_threads}\033[0m")
+        print("\033[94m[DEBUG] GPU: %s\033[0m" % gpu_info)
+        print("\033[94m[DEBUG] Memory: %.2f GB\033[0m" % memory_total_gb)
+        print("\033[94m[DEBUG] Storage Devices:\033[0m")
+        if storage_devices:
+            for dev in storage_devices:
+                print(f"  \033[94m[DEBUG] {dev['device']} ({dev['mount']}): {dev['total_gb']} GB\033[0m")
+        else:
+            print("  \033[94m[DEBUG] (No storage devices enumerated)\033[0m")
+        print(f"\033[94m[DEBUG] Total Storage: {total_storage_gb} GB\033[0m")
+
+        print("\033[94m[DEBUG] Internal IP: %s\033[0m" % internal_ip)
+        print("\033[94m[DEBUG] External IP: %s\033[0m" % external_ip)
+        print("\033[94m[DEBUG] ISP: %s\033[0m" % isp)
+        print(f"\033[94m[DEBUG] wifi - {str(wifi_active).lower()}\033[0m")
+        print(f"\033[94m[DEBUG] ethernet - {str(ethernet_active).lower()}\033[0m")
+
+        print("\033[94m[DEBUG] Activity: bypasses=%d basic_scans=%d full_scans=%d\033[0m" %
+              (bypass_count, basic_scan_count, full_scan_count))
+        print("\033[95m[STARTUP][DEBUG] ===========================================\033[0m\n")
+    except Exception as e:
+        print(f"\033[93m[WARN] Failed to produce full debug snapshot: {e}\033[0m")
+
 if __name__ == '__main__':
     os.system('cls')
+    update_logging_level(settings.get("debug_mode", "off"))
+    for noisy in ('waitress.queue', 'waitress', 'hypercorn.error', 'hypercorn.access'):
+        lg = logging.getLogger(noisy)
+        lg.setLevel(logging.ERROR)
+        lg.propagate = False
+        for h in lg.handlers:
+            h.setLevel(logging.ERROR)
+        if not lg.handlers:
+            lg.addHandler(logging.NullHandler())
+    if not os.path.exists(APPDATA_LOCATION):
+        os.makedirs(APPDATA_LOCATION, exist_ok=True)
+
+    file_version = read_version_file()
+    try:
+        if file_version != APP_VERSION:
+            write_version_file(APP_VERSION)
+            if file_version:
+                print(f"\033[94m[INFO] Updated VERSION_FILE from {file_version} -> {APP_VERSION}\033[0m")
+            else:
+                print(f"\033[94m[INFO] Wrote initial VERSION_FILE -> {APP_VERSION}\033[0m")
+        else:
+            print(f"\033[94m[INFO] Loaded version from VERSION_FILE -> {file_version}\033[0m")
+    except Exception as e:
+        print(f"\033[93m[WARN] Failed to ensure VERSION_FILE: {e}\033[0m")
+
+    if settings.get("debug_mode", "off") == "full":
+        print_full_debug_startup_info()
+
+    auto_update_check(settings)
 
     if settings.get("run_as_admin") and not is_admin():
         print("\033[93m[INFO] Setting requires admin privileges. Restarting...\033[0m")

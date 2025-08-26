@@ -11,25 +11,24 @@ import ipaddress
 class ConnectionMonitor:
     def __init__(self):
         self.connection_start_times = {}
-        self.adapters_info = {}
+        self.process_cache = {}
+        self.process_stats = {}  # To store persistent stats like dropped connections
+        # Added caches / state
         self.whois_cache = {}
-        self.refresh_adapters_info()
-
-    def refresh_adapters_info(self):
+        self.whois_cache_ttl = 3600  # seconds
         self.adapters_info = {}
+        self._last_adapter_refresh = 0.0
+        self._whois_max_entries = 256
+
+    def find_interface_for_connection(self, conn):
         try:
-            # Get all network interfaces with their addresses
-            for interface, addrs in psutil.net_if_addrs().items():
-                for addr in addrs:
-                    if addr.family == socket.AF_INET:  # IPv4
-                        self.adapters_info[interface] = {
-                            'name': interface,
-                            'ip': addr.address,
-                            'netmask': addr.netmask,
-                            'status': 'UP' if interface in psutil.net_if_stats() and psutil.net_if_stats()[interface].isup else 'DOWN'
-                        }
-        except Exception as e:
-            print(f"Error refreshing adapter info: {e}")
+            local_ip = conn.laddr.ip
+            for name, info in self.adapters_info.items():
+                if info.get('ip') == local_ip:
+                    return name
+            return None
+        except:
+            return None
 
     def get_adapters(self):
         self.refresh_adapters_info()
@@ -46,26 +45,50 @@ class ConnectionMonitor:
             return "Ethernet"
         return "Other"
 
-    def find_interface_for_connection(self, connection):
+    def refresh_adapters_info(self):
+        adapters = {}
         try:
-            local_ip = connection.laddr.ip
-            for name, info in self.adapters_info.items():
-                if info.get('ip') == local_ip:
-                    return name
-            return None
-        except:
-            return None
+            addrs = psutil.net_if_addrs()
+            stats = psutil.net_if_stats()
+            for name, addr_list in addrs.items():
+                ipv4 = None
+                mac = None
+                for a in addr_list:
+                    try:
+                        if a.family == socket.AF_INET and not ipv4:
+                            ipv4 = a.address
+                        # Cross‑platform MAC detection
+                        if (hasattr(psutil, 'AF_LINK') and a.family == getattr(psutil, 'AF_LINK')) or \
+                           (hasattr(socket, 'AF_PACKET') and a.family == getattr(socket, 'AF_PACKET')):
+                            mac = a.address
+                    except Exception:
+                        continue
+                adapters[name] = {
+                    'name': name,
+                    'ip': ipv4,
+                    'mac': mac,
+                    'is_up': stats.get(name).isup if name in stats else None
+                }
+        except Exception:
+            pass
+        self.adapters_info = adapters
 
     def get_connections(self):
         current_time = time.time()
+        # Refresh adapter map periodically (every 5s)
+        if current_time - getattr(self, "_last_adapter_refresh", 0) > 5:
+            self.refresh_adapters_info()
+            self._last_adapter_refresh = current_time
         processes_data = {}
+        
+        active_pids = set()
 
         try:
             # Get all connections
             all_connections = psutil.net_connections(kind='inet')
             
             # Get processes once for efficiency
-            processes = {p.pid: p for p in psutil.process_iter(['pid', 'name', 'create_time'])}
+            processes = {p.pid: p for p in psutil.process_iter(['pid', 'name', 'create_time', 'memory_info', 'io_counters', 'status'])}
             
             for conn in all_connections:
                 try:
@@ -82,6 +105,7 @@ class ConnectionMonitor:
                     
                     process = processes[pid]
                     process_name = process.info['name']
+                    active_pids.add(pid)
                     
                     # Ignore system processes
                     if pid in (None, 0):
@@ -89,10 +113,58 @@ class ConnectionMonitor:
 
                     # Initialize process entry if not present
                     if pid not in processes_data:
+                        # Initialize persistent stats if first time seeing this process
+                        if pid not in self.process_stats:
+                            try:
+                                proc_obj = psutil.Process(pid)
+                            except psutil.Error:
+                                continue
+                            self.process_stats[pid] = {
+                                'dropped_connections': 0,
+                                'previous_connection_ids': set(),
+                                'process_obj': proc_obj,
+                                'create_time': process.info.get('create_time')
+                            }
+                            # Prime CPU measurement (first call returns 0.0)
+                            try:
+                                self.process_stats[pid]['process_obj'].cpu_percent(None)
+                            except psutil.Error:
+                                pass
+                            cpu_usage = 0.0
+                        else:
+                            stats = self.process_stats[pid]
+                            # If process restarted or cached handle is dead, refresh and prime
+                            try:
+                                restarted = stats.get('create_time') != process.info.get('create_time')
+                                not_running = not stats['process_obj'].is_running()
+                            except psutil.Error:
+                                restarted = True
+                                not_running = True
+                            if restarted or not_running:
+                                try:
+                                    stats['process_obj'] = psutil.Process(pid)
+                                    stats['create_time'] = process.info.get('create_time')
+                                    stats['process_obj'].cpu_percent(None)  # prime
+                                except psutil.Error:
+                                    pass
+                                cpu_usage = 0.0
+                            else:
+                                try:
+                                    cpu_usage = stats['process_obj'].cpu_percent(None)
+                                except psutil.Error:
+                                    cpu_usage = 0.0
+
                         processes_data[pid] = {
                             'pid': pid,
                             'process_name': process_name,
-                            'connections': []
+                            'connections': [],
+                            'cpu_percent': cpu_usage,
+                            'memory_rss': process.info['memory_info'].rss if process.info['memory_info'] else 0,
+                            'io_read_bytes': process.info['io_counters'].read_bytes if process.info['io_counters'] else 0,
+                            'io_write_bytes': process.info['io_counters'].write_bytes if process.info['io_counters'] else 0,
+                            'create_time': process.info['create_time'],
+                            'status': process.info['status'],
+                            'dropped_connections': self.process_stats[pid]['dropped_connections']
                         }
 
                     # Track connection duration
@@ -114,36 +186,55 @@ class ConnectionMonitor:
                         'remote_ip': conn.raddr.ip,
                         'remote_port': conn.raddr.port,
                         'status': conn.status,
-                        'type': connection_type,
-                        'interface': interface_name or "Unknown",
-                        'duration': format_duration(duration),
+                        'duration': duration,
                         'start_time': start_time,
-                        'protocol': proto,
+                        'interface': interface_name,
+                        'type': connection_type,
+                        'protocol': proto
                     })
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
-                    
-            # Clean up stale connection timings
-            active_conn_ids = {
-                conn['id'] 
-                for proc in processes_data.values() 
-                for conn in proc['connections']
-            }
-            for conn_id in list(self.connection_start_times.keys()):
-                if conn_id not in active_conn_ids:
-                    del self.connection_start_times[conn_id]
             
-            # Convert dict to list and add connection count
-            result_list = list(processes_data.values())
-            for proc in result_list:
-                proc['connection_count'] = len(proc['connections'])
+            # Calculate dropped connections and add connection count
+            for pid, data in processes_data.items():
+                # Add connection_count field
+                data['connection_count'] = len(data['connections'])
 
-            return result_list
+                current_connection_ids = {c['id'] for c in data['connections']}
+                previous_ids = self.process_stats[pid]['previous_connection_ids']
+                
+                dropped_count = len(previous_ids - current_connection_ids)
+                if dropped_count > 0:
+                    self.process_stats[pid]['dropped_connections'] += dropped_count
+                
+                self.process_stats[pid]['previous_connection_ids'] = current_connection_ids
+                processes_data[pid]['dropped_connections'] = self.process_stats[pid]['dropped_connections']
+
+            # Cleanup stats for processes that are no longer active
+            for pid in list(self.process_stats.keys()):
+                if pid not in active_pids:
+                    del self.process_stats[pid]
+
         except Exception as e:
             print(f"Error getting connections: {e}")
-            return []
+
+        return list(processes_data.values())
 
     def perform_whois_lookup(self, ip):
+        # Ensure cache dict exists (defensive)
+        if not hasattr(self, 'whois_cache'):
+            self.whois_cache = {}
+        now = time.time()
+
+        # Purge expired & size control
+        expired = [k for k, v in list(self.whois_cache.items()) if now - v['timestamp'] > self.whois_cache_ttl]
+        for k in expired:
+            self.whois_cache.pop(k, None)
+        if len(self.whois_cache) > self._whois_max_entries:
+            # Drop oldest entries
+            for k in sorted(self.whois_cache, key=lambda kk: self.whois_cache[kk]['timestamp'])[:len(self.whois_cache)-self._whois_max_entries]:
+                self.whois_cache.pop(k, None)
+
         # Check if the IP is private/reserved first
         try:
             ip_obj = ipaddress.ip_address(ip)
@@ -153,39 +244,26 @@ class ConnectionMonitor:
             return f"Invalid IP address: {ip}"
 
         # Check cache first
-        if ip in self.whois_cache and (time.time() - self.whois_cache[ip]['timestamp']) < 3600:
+        if ip in self.whois_cache and (now - self.whois_cache[ip]['timestamp']) < self.whois_cache_ttl:
             return self.whois_cache[ip]['result']
         
         output = None
         try:
-            # Determine the command based on the platform
             command = ["whois", ip]
-            
-            # Execute the command
             result = subprocess.run(command, capture_output=True, text=True, timeout=10, check=False)
-
             if result.returncode == 0 and result.stdout:
                 output = result.stdout
             else:
-                # If the command fails or returns no output, try the online lookup
                 output = self._online_whois_lookup(ip)
-
         except FileNotFoundError:
-            # If 'whois' command is not found, go directly to online lookup
             output = self._online_whois_lookup(ip)
         except Exception:
-            # Broad exception for other potential issues, fallback to online
             try:
                 output = self._online_whois_lookup(ip)
             except Exception as e2:
                 output = f"WHOIS lookup failed: {str(e2)}"
 
-        # Cache the result
-        self.whois_cache[ip] = {
-            'result': output,
-            'timestamp': time.time()
-        }
-        
+        self.whois_cache[ip] = {'result': output, 'timestamp': now}
         return output
 
     def perform_deep_dive(self, ip):
@@ -264,15 +342,29 @@ class ConnectionMonitor:
             return None
 
     def _scan_common_ports(self, ip):
-        # Scan all well-known ports (1-1024)
-        ports_to_scan = range(1, 1025)
+        # Scan all well-known ports (1-1024) plus a other list
+        well_known_ports = range(1, 1025)
+        
+        other_ports = [
+            80,     
+            443,    
+            1433,   
+            2049,   
+            5900,   
+            19132,  
+            25565,
+            27015
+        ]
+
+        ports_to_scan = sorted(list(set(list(well_known_ports) + other_ports)))
+        
         open_ports = []
         threads = []
         
         def scan_port(port):
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.settimeout(0.2) # Aggressive timeout for speed
+                    s.settimeout(0.2)
                     if s.connect_ex((ip, port)) == 0:
                         open_ports.append(port)
             except Exception:

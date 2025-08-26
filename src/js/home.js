@@ -63,24 +63,97 @@ document.addEventListener('DOMContentLoaded', () => {
         // Set a new timeout to delay and coalesce multiple calls
         statisticsTimeout = setTimeout(async () => {
             try {
-                const response = await fetch('/statistics');
-                const data = await response.json();
+                // Fetch all data sources in parallel
+                const [statsRes, bypassHistoryRes, scanHistoryRes] = await Promise.all([
+                    fetch('/statistics'),
+                    fetch('/history/bypasses'),
+                    fetch('/history/scans')
+                ]);
+
+                const statsData = statsRes.ok ? await statsRes.json() : { bypass_count: 0, basic_scan_count: 0, full_scan_count: 0 };
+                const bypassHistory = bypassHistoryRes.ok ? await bypassHistoryRes.json() : [];
+                const scanHistory = scanHistoryRes.ok ? await scanHistoryRes.json() : [];
+
+                // Update counters from the main statistics endpoint
+                if (bypassCounter) bypassCounter.textContent = statsData.bypass_count || 0;
+                if (basicScanCounter) basicScanCounter.textContent = statsData.basic_scan_count || 0;
+                if (fullScanCounter) fullScanCounter.textContent = statsData.full_scan_count || 0;
                 
-                if (response.ok) {
-                    if (bypassCounter) bypassCounter.textContent = data.bypass_count || 0;
-                    if (basicScanCounter) basicScanCounter.textContent = data.basic_scan_count || 0;
-                    if (fullScanCounter) fullScanCounter.textContent = data.full_scan_count || 0;
-                    
-                    animateCounters();
-                } else {
-                    console.error('Failed to load statistics');
-                }
+                animateCounters();
+
+                // Combine all activities from history
+                let allActivities = [];
+
+                bypassHistory.forEach(item => {
+                    allActivities.push({
+                        type: 'bypass',
+                        timestamp: item.time,
+                        details: {
+                            adapter: item.transport || 'an adapter'
+                        }
+                    });
+                });
+
+                scanHistory.forEach(item => {
+                    allActivities.push({
+                        type: 'scan',
+                        timestamp: item.time,
+                        details: {
+                            scan_type: item.type,
+                            device_count: item.deviceCount
+                        }
+                    });
+                });
+
+                // Deduplicate and sort activities by date, newest first
+                const uniqueActivities = Array.from(new Map(allActivities.map(item => [item.timestamp + item.type, item])).values());
+                uniqueActivities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+                updateActivityFeed(uniqueActivities);
+
             } catch (error) {
-                console.error('Error loading statistics:', error);
+                console.error('Error loading statistics and history:', error);
             }
             statisticsTimeout = null;
         }, 100);
     };
+
+    function updateActivityFeed(activities) {
+        const feedContainer = document.getElementById('activityFeed');
+        if (!feedContainer) return;
+
+        if (activities.length === 0) {
+            feedContainer.innerHTML = '<div class="activity-item empty">No recent activity to show.</div>';
+            return;
+        }
+
+        feedContainer.innerHTML = activities.map(activity => {
+            const time = new Date(activity.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            let icon = '🔔';
+            let message = '';
+
+            switch (activity.type) {
+                case 'bypass':
+                    icon = '⚡️';
+                    message = `Bypass successful for <strong>${activity.details.adapter}</strong>.`;
+                    break;
+                case 'scan':
+                    icon = '🔍';
+                    message = `${activity.details.scan_type} scan completed, found <strong>${activity.details.device_count}</strong> devices.`;
+                    break;
+                default:
+                    message = `Unknown event: ${activity.type}`;
+            }
+
+            return `
+                <div class="activity-item">
+                    <div class="activity-icon">${icon}</div>
+                    <div class="activity-message">${message}</div>
+                    <div class="activity-time">${time}</div>
+                </div>
+            `;
+        }).join('');
+    }
 
     // Make loadSystemInfo available globally
     window.loadSystemInfo = async function() {
