@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file (only user-related things).
 
-# [v1.6] - 2025-08-25
+## [v1.6] - 2025-08-25
 ### Added
 - Updating
   - users can now rollback to older versions of the code if there are issues with their current one
