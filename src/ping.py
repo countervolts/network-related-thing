@@ -42,40 +42,43 @@ def get_local_ips():
 
 def get_default_gateway():
     if netifaces:
-        gateways = netifaces.gateways()
-        return gateways.get('default', {}).get(netifaces.AF_INET, [None])[0]
+        try:
+            gateways = netifaces.gateways()
+            gateway_ip = gateways.get('default', {}).get(netifaces.AF_INET, [None])[0]
+            if gateway_ip:
+                return gateway_ip
+        except Exception:
+            # If netifaces fails, proceed to the fallback
+            pass
+
+    # Fallback for macOS using netstat
+    try:
+        result = subprocess.run(
+            ["netstat", "-nr"], capture_output=True, text=True, check=True
+        )
+        for line in result.stdout.splitlines():
+            if line.startswith("default"):
+                parts = line.split()
+                if len(parts) > 1:
+                    return parts[1]
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass  # Could not get gateway from netstat
+
     return None
 
-def ping(ip):
-    param = ['-n', '1', '-w', '500'] if platform.system().lower() == 'windows' else ['-c', '1', '-W', '1']
+def get_mac_address(ip_address):
+    if not ip_address:
+        return None
     try:
-        result = subprocess.run(['ping'] + param + [ip], 
-                              stdout=subprocess.DEVNULL, 
-                              stderr=subprocess.DEVNULL,
-                              timeout=2)
-        return ip, result.returncode == 0
-    except subprocess.TimeoutExpired:
-        return ip, False
-
-def get_mac_address(ip):
-    try:
-        if platform.system() == 'Windows':
-            cmd = f"arp -a {ip}"
-        else:
-            cmd = f"arp -n {ip}"
-            
+        cmd = f"arp -n {ip_address}"
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
         output = result.stdout
         
         for line in output.splitlines():
-            if ip in line:
+            if ip_address in line:
                 parts = line.split()
-                if platform.system() == 'Windows':
-                    if len(parts) >= 3 and '-' in parts[1]:
-                        return parts[1].replace('-', ':')
-                else:
-                    if len(parts) >= 3 and ':' in parts[2]:
-                        return parts[2]
+                if len(parts) >= 3 and ':' in parts[2]:
+                    return parts[2]
         return 'Not Found'
     except Exception:
         return 'Unknown'
@@ -99,45 +102,36 @@ def get_hostname_dns_only(ip):
 @lru_cache(maxsize=128)
 def get_hostname(ip, timeout=1):
     global hostname_counters
-    # 1. Standard DNS Lookup (Reverse PTR)
+    # Standard DNS Lookup (Reverse PTR)
     try:
+        # Set a timeout for the DNS lookup
+        socket.setdefaulttimeout(timeout)
         hostname, _, _ = socket.gethostbyaddr(ip)
         hostname_counters["gethostbyaddr"] += 1
         return hostname
     except (socket.herror, socket.gaierror, OSError):
-        pass # Failed, try next method
+        pass # Failed
+    finally:
+        socket.setdefaulttimeout(None) # Reset to default
 
-    # 2. NetBIOS Name Query (more effective on local networks)
-    try:
-        # Construct NetBIOS Name Service request
-        # Transaction ID (2 bytes), Flags (2 bytes), Questions (2 bytes), etc.
-        trans_id = os.urandom(2)
-        query = trans_id + b'\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00'
-        # Name to query: '*' (encoded) + null terminator
-        query += b'\x20\x43\x4b\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x00'
-        # Query Type: NBSTAT (33), Query Class: IN (1)
-        query += b'\x00\x21\x00\x01'
-
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.settimeout(timeout)
-            s.sendto(query, (ip, 137))
-            data, _ = s.recvfrom(1024)
-            
-            # The name is in the response after a certain offset
-            # This is a simplified parser for the most common response format
-            if len(data) > 56:
-                # Find the first name in the list of names
-                name_bytes = data[57:72].strip()
-                hostname = name_bytes.decode('latin-1', errors='ignore').strip()
-                if hostname:
-                    hostname_counters["netbios"] += 1
-                    return hostname
-    except (socket.timeout, ConnectionResetError, OSError):
-        pass # Failed, move on
-
-    # If all methods failed
+    # If DNS failed
     hostname_counters["unknown"] += 1
     return 'Unknown'
+
+def ping(ip, timeout=1):
+    try:
+        # -c 1: Send only 1 packet
+        # -t timeout: Specify a timeout in seconds.
+        command = ["ping", "-c", "1", "-t", str(timeout), ip]
+        
+        result = subprocess.run(
+            command,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        return (ip, result.returncode == 0)
+    except Exception:
+        return (ip, False)
 
 def arp_scan(subnet):
     base_ip = '.'.join(subnet.split('.')[:3])
@@ -188,34 +182,25 @@ def _select_iface_for_subnet(subnet):
 def _read_arp_table_map(base_prefix):
     ip_mac = {}
     try:
-        if platform.system() == 'Windows':
-            result = subprocess.run(['arp', '-a'], capture_output=True, text=True, check=True)
+        # Prefer `ip neigh` if available for more reliable parsing, fallback to `arp -n`
+        try:
+            result = subprocess.run(['ip', 'neigh'], capture_output=True, text=True, check=True)
             for line in result.stdout.splitlines():
                 parts = line.split()
-                if len(parts) >= 2 and parts[0].startswith(base_prefix):
+                if len(parts) >= 5:
                     ip = parts[0]
-                    mac = parts[1].replace('-', ':').lower()
-                    ip_mac[ip] = mac
-        else:
-            # Prefer `ip neigh` if available for more reliable parsing
-            try:
-                result = subprocess.run(['ip', 'neigh'], capture_output=True, text=True, check=True)
-                for line in result.stdout.splitlines():
-                    parts = line.split()
-                    if len(parts) >= 5:
-                        ip = parts[0]
-                        if ip.startswith(base_prefix) and 'lladdr' in parts:
-                            mac = parts[parts.index('lladdr') + 1].lower()
-                            ip_mac[ip] = mac
-            except Exception:
-                result = subprocess.run(['arp', '-n'], capture_output=True, text=True, check=True)
-                for line in result.stdout.splitlines():
-                    parts = line.split()
-                    # typical: IP HWtype HWaddress Flags Mask Iface
-                    if len(parts) >= 3 and parts[0].startswith(base_prefix):
-                        ip = parts[0]
-                        mac = parts[2].lower()
+                    if ip.startswith(base_prefix) and 'lladdr' in parts:
+                        mac = parts[parts.index('lladdr') + 1].lower()
                         ip_mac[ip] = mac
+        except Exception:
+            result = subprocess.run(['arp', '-n'], capture_output=True, text=True, check=True)
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                # typical: IP HWtype HWaddress Flags Mask Iface
+                if len(parts) >= 3 and parts[0].startswith(base_prefix):
+                    ip = parts[0]
+                    mac = parts[2].lower()
+                    ip_mac[ip] = mac
     except Exception:
         pass
     return ip_mac
@@ -273,7 +258,7 @@ _OUI_CACHE = {}
 _OUI_MTIME = 0
 
 def load_oui_data():
-    appdata_location = os.path.join(os.getenv('APPDATA'), "ayosbypasser")
+    appdata_location = os.path.expanduser('~/Library/Application Support/macosbypass')
     oui_file = os.path.join(appdata_location, "oui.txt")
 
     global _OUI_CACHE, _OUI_MTIME
@@ -486,7 +471,7 @@ def scan_network(subnet, scan_hostname=False, scan_vendor=False, scanning_method
     for ip in online_devices:
         mac = get_mac_address(ip)
         hostname = hostnames.get(ip, 'Unknown') if scan_hostname else 'Skipped'
-        vendor = vendors.get(ip, 'Unknown') if scan_vendor else 'Skipped'
+        vendor = get_vendor(mac, oui_dict) if scan_vendor else 'Skipped'
 
         device_info = {
             'ip': ip,

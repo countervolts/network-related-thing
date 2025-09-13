@@ -1,27 +1,18 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const hideWebsiteToggle = document.getElementById('hideWebsiteToggle');
-    const autoOpenToggle = document.getElementById('autoOpenToggle');
-    const autoUpdateToggle = document.getElementById('autoUpdateToggle');
-    const debugModeDropdown = document.getElementById('debugModeDropdown');
-    const bypassModeDropdown = document.getElementById('bypassModeDropdown');
-    const runAsAdminToggle = document.getElementById('runAsAdminToggle');
-    const hardwareRngToggle = document.getElementById('hardwareRngToggle');
-    const pbccToggle = document.getElementById('pbccToggle');
-    const acceleratedBypassingToggle = document.getElementById('acceleratedBypassingToggle');
-    const serverBackendDropdown = document.getElementById('serverBackendDropdown');
-    const scanningMethodDropdown = document.getElementById('scanningMethodDropdown');
-    const parallelScansToggle = document.getElementById('parallelScansToggle');
-    const overrideMultiplierInput = document.getElementById('overrideMultiplierInput');
-    const betaFeaturesToggle = document.getElementById('betaFeaturesToggle');
-    const applySettingsBtn = document.getElementById('applySettingsBtn');
-    const confirmationModal = document.getElementById('confirmationModal');
-    const confirmBtn = document.getElementById('confirmBtn');
-    const cancelBtn = document.getElementById('cancelBtn');
-    const changesList = document.getElementById('changesList');
-    const openWinHotspotSettingsBtn = document.getElementById('openWinHotspotSettingsBtn');
-    const uiDebugModeToggle = document.getElementById('uiDebugModeToggle');
-    const networkDebugModeToggle = document.getElementById('networkDebugModeToggle');
-    let networkStatsInterval = null;
+    let autoOpenToggle = document.getElementById('autoOpenToggle');
+    let debugModeDropdown = document.getElementById('debugModeDropdown');
+    let runAsAdminToggle = document.getElementById('runAsAdminToggle');
+    let serverBackendDropdown = document.getElementById('serverBackendDropdown');
+    let scanningMethodDropdown = document.getElementById('scanningMethodDropdown');
+    let parallelScansToggle = document.getElementById('parallelScansToggle');
+    let overrideMultiplierInput = document.getElementById('overrideMultiplierInput');
+    let applySettingsBtn = document.getElementById('applySettingsBtn');
+    let confirmationModal = document.getElementById('confirmationModal');
+    let confirmBtn = document.getElementById('confirmBtn');
+    let cancelBtn = document.getElementById('cancelBtn');
+    let changesList = document.getElementById('changesList');
+    let uiDebugModeToggle = document.getElementById('uiDebugModeToggle');
+    let networkDebugModeToggle = document.getElementById('networkDebugModeToggle');
     let originalFetch = null;
 
     // Store original console methods
@@ -33,16 +24,9 @@ document.addEventListener('DOMContentLoaded', () => {
         debug: console.debug,
     };
 
-    // Check if all elements are properly selected
-    if (!hideWebsiteToggle || !autoOpenToggle || !debugModeDropdown || !bypassModeDropdown || 
-        !runAsAdminToggle || !applySettingsBtn || !confirmationModal || 
-        !confirmBtn || !cancelBtn || !changesList || !hardwareRngToggle ||
-        !pbccToggle || !acceleratedBypassingToggle || !serverBackendDropdown || !scanningMethodDropdown || 
-        !parallelScansToggle || !overrideMultiplierInput || !betaFeaturesToggle || !openWinHotspotSettingsBtn || !uiDebugModeToggle || !networkDebugModeToggle) {
-        console.error('One or more settings elements are missing in the DOM.');
-        return;
-    }
-
+    // Removed strict DOM guard — make code resilient to missing/removed controls.
+    // We will check element existence before using them and fall back to currentSettings where appropriate.
+    
     let currentSettings = {};
 
     function formatBytes(bytes, decimals = 2) {
@@ -55,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateMultiplierDescription() {
-        const multiplier = overrideMultiplierInput.value;
+        const multiplier = overrideMultiplierInput ? overrideMultiplierInput.value : (currentSettings.override_multiplier || '1');
         const cpuThreads = currentSettings.cpu_thread_count || 'N/A';
         const multiplierCalcSpan = document.getElementById('multiplierCalculationSpan');
         const cpuThreadCountSpan = document.getElementById('cpuThreadCountSpan');
@@ -124,34 +108,30 @@ document.addEventListener('DOMContentLoaded', () => {
             const settings = await response.json();
             currentSettings = settings;
 
-            // General Settings
-            hideWebsiteToggle.checked = settings.hide_website || false;
-            autoOpenToggle.checked = settings.auto_open_page !== false;
-            autoUpdateToggle.checked = settings.auto_update !== false;
-            runAsAdminToggle.checked = settings.run_as_admin || false;
+            // General Settings (only assign if element exists)
+            if (hideWebsiteToggle) hideWebsiteToggle.checked = settings.hide_website || false;
+            if (autoOpenToggle) autoOpenToggle.checked = settings.auto_open_page !== false;
+            if (typeof autoUpdateToggle !== 'undefined' && autoUpdateToggle) autoUpdateToggle.checked = settings.auto_update !== false;
+            if (runAsAdminToggle) runAsAdminToggle.checked = settings.run_as_admin || false;
             
             // Developer Settings
-            debugModeDropdown.value = settings.debug_mode || 'off';
-            serverBackendDropdown.value = settings.server_backend || 'waitress';
-            uiDebugModeToggle.checked = settings.ui_debug_mode || false;
-            networkDebugModeToggle.checked = settings.network_debug_mode || false;
+            if (debugModeDropdown) debugModeDropdown.value = settings.debug_mode || 'off';
+            if (serverBackendDropdown) serverBackendDropdown.value = settings.server_backend || 'waitress';
+            if (uiDebugModeToggle) uiDebugModeToggle.checked = settings.ui_debug_mode || false;
+            if (networkDebugModeToggle) networkDebugModeToggle.checked = settings.network_debug_mode || false;
 
             // Networking Settings
-            bypassModeDropdown.value = settings.bypass_mode || 'registry';
-            hardwareRngToggle.checked = settings.hardware_rng !== false;
-            pbccToggle.checked = settings.pbcc_enabled || false;
-            acceleratedBypassingToggle.checked = settings.accelerated_bypassing !== false;
-            scanningMethodDropdown.value = settings.scanning_method || 'divide_and_conquer';
-            parallelScansToggle.checked = settings.parallel_scans !== false;
-            overrideMultiplierInput.value = settings.override_multiplier || 2;
+            if (typeof pbccToggle !== 'undefined' && pbccToggle) pbccToggle.checked = settings.pbcc_enabled || false;
+            if (scanningMethodDropdown) scanningMethodDropdown.value = settings.scanning_method || 'divide_and_conquer';
+            if (parallelScansToggle) parallelScansToggle.checked = settings.parallel_scans !== false;
+            if (overrideMultiplierInput) overrideMultiplierInput.value = settings.override_multiplier || 2;
 
-            // Misc Settings
-            betaFeaturesToggle.checked = settings.beta_features || false;
-
+            // Apply runtime behaviors even if selectors are missing (handlers will no-op when elements are absent)
             applyDebugMode(settings.debug_mode);
             applyUiDebugMode(settings.ui_debug_mode);
-            networkDebugModeToggle.checked = settings.network_debug_mode || false;
+            if (networkDebugModeToggle) networkDebugModeToggle.checked = settings.network_debug_mode || false;
             applyNetworkDebugMode(settings.network_debug_mode);
+
             updateMultiplierDescription();
             if (window.loadOuiFileInfo) {
                 window.loadOuiFileInfo();
@@ -173,28 +153,22 @@ document.addEventListener('DOMContentLoaded', () => {
     function getUpdatedSettings() {
         return {
             // General
-            hide_website: hideWebsiteToggle.checked,
-            auto_open_page: autoOpenToggle.checked,
-            auto_update: autoUpdateToggle.checked,
-            run_as_admin: runAsAdminToggle.checked,
+            hide_website: hideWebsiteToggle ? hideWebsiteToggle.checked : (currentSettings.hide_website || false),
+            auto_open_page: autoOpenToggle ? autoOpenToggle.checked : (currentSettings.auto_open_page !== false),
+            auto_update: (typeof autoUpdateToggle !== 'undefined' && autoUpdateToggle) ? autoUpdateToggle.checked : (currentSettings.auto_update !== false),
+            run_as_admin: runAsAdminToggle ? runAsAdminToggle.checked : (currentSettings.run_as_admin || false),
             
             // Developer
-            debug_mode: debugModeDropdown.value,
-            server_backend: serverBackendDropdown.value,
-            ui_debug_mode: uiDebugModeToggle.checked,
-            network_debug_mode: networkDebugModeToggle.checked,
+            debug_mode: debugModeDropdown ? debugModeDropdown.value : (currentSettings.debug_mode || 'off'),
+            server_backend: serverBackendDropdown ? serverBackendDropdown.value : (currentSettings.server_backend || 'waitress'),
+            ui_debug_mode: uiDebugModeToggle ? uiDebugModeToggle.checked : (currentSettings.ui_debug_mode || false),
+            network_debug_mode: networkDebugModeToggle ? networkDebugModeToggle.checked : (currentSettings.network_debug_mode || false),
 
             // Networking
-            bypass_mode: bypassModeDropdown.value,
-            hardware_rng: hardwareRngToggle.checked,
-            pbcc_enabled: pbccToggle.checked,
-            accelerated_bypassing: acceleratedBypassingToggle.checked,
-            scanning_method: scanningMethodDropdown.value,
-            parallel_scans: parallelScansToggle.checked,
-            override_multiplier: parseInt(overrideMultiplierInput.value, 10),
-
-            // Misc
-            beta_features: betaFeaturesToggle.checked
+            pbcc_enabled: (typeof pbccToggle !== 'undefined' && pbccToggle) ? pbccToggle.checked : (currentSettings.pbcc_enabled || false),
+            scanning_method: scanningMethodDropdown ? scanningMethodDropdown.value : (currentSettings.scanning_method || 'divide_and_conquer'),
+            parallel_scans: parallelScansToggle ? parallelScansToggle.checked : (currentSettings.parallel_scans !== false),
+            override_multiplier: overrideMultiplierInput ? parseInt(overrideMultiplierInput.value, 10) : (currentSettings.override_multiplier || 2),
         };
     }
 
@@ -211,7 +185,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleSettingChange() {
         const updatedSettings = getUpdatedSettings();
         const changed = getChangedSettings(updatedSettings);
-        applySettingsBtn.classList.toggle('visible', changed.length > 0);
+        if (applySettingsBtn) {
+            applySettingsBtn.classList.toggle('visible', changed.length > 0);
+        }
     }
 
     async function saveSettings() {
@@ -230,7 +206,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 applyDebugMode(updatedSettings.debug_mode);
                 applyUiDebugMode(updatedSettings.ui_debug_mode);
                 applyNetworkDebugMode(updatedSettings.network_debug_mode);
-                applyBetaFeatures(updatedSettings.beta_features);
             } else {
                 const errorData = await response.json();
                 showNotification(errorData.error || 'Failed to apply settings.', 'error');
@@ -242,13 +217,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showConfirmationModal() {
+        // If UI modal elements are missing, skip modal and persist immediately
+        if (!changesList || !confirmationModal) {
+            console.warn('[settings.js] confirmation modal elements missing — applying settings directly.');
+            saveSettings();
+            return;
+        }
+
         changesList.innerHTML = '';
         const updatedSettings = getUpdatedSettings();
         const changed = getChangedSettings(updatedSettings);
         const restartMessage = document.getElementById('restartRequiredMessage');
 
         if (changed.length === 0) {
-            showNotification('No changes to apply.', 'info');
+            if (window.showNotification) window.showNotification('No changes to apply.', 'info');
             return;
         }
 
@@ -279,30 +261,21 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        if (restartNeeded) {
-            restartMessage.textContent = 'One or more settings requires a restart.';
-            restartMessage.className = 'restart-required-notice';
-            restartMessage.style.display = 'block';
-        } else {
-            restartMessage.style.display = 'none';
+        if (restartMessage) {
+            if (restartNeeded) {
+                restartMessage.textContent = 'One or more settings requires a restart.';
+                restartMessage.className = 'restart-required-notice';
+                restartMessage.style.display = 'block';
+            } else {
+                restartMessage.style.display = 'none';
+            }
         }
 
         confirmationModal.style.display = 'flex';
     }
 
     function hideConfirmationModal() {
-        confirmationModal.style.display = 'none';
-    }
-
-    function applyBetaFeatures(enabled) {
-        const autoTabWrapper = document.getElementById('autoTabWrapper');
-        if (autoTabWrapper) {
-            autoTabWrapper.style.display = enabled ? '' : 'none';
-        }
-        // This ensures the navigation bar correctly updates its layout
-        if (window.updateNavVisibility) {
-            window.updateNavVisibility();
-        }
+        if (confirmationModal) confirmationModal.style.display = 'none';
     }
 
     function applyUiDebugMode(enabled) {
@@ -532,31 +505,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function initializeTooltips() {
-        const bypassModeInfo = document.getElementById('bypassModeInfo');
-        const cpuThreads = currentSettings.cpu_thread_count || 'N/A';
-        const parallelMultiplier = overrideMultiplierInput ? overrideMultiplierInput.value : (currentSettings.override_multiplier || 2);
-    }
-
+    // --- Event Listeners for Settings Controls ---
     const allSettingsControls = [
-        hideWebsiteToggle, autoOpenToggle, autoUpdateToggle, debugModeDropdown, bypassModeDropdown,
-        runAsAdminToggle, hardwareRngToggle, pbccToggle, acceleratedBypassingToggle,
-        serverBackendDropdown, scanningMethodDropdown, parallelScansToggle,
-        betaFeaturesToggle, overrideMultiplierInput, uiDebugModeToggle, networkDebugModeToggle
+        hideWebsiteToggle, autoOpenToggle, debugModeDropdown,
+        runAsAdminToggle, serverBackendDropdown, scanningMethodDropdown, 
+        parallelScansToggle, overrideMultiplierInput, uiDebugModeToggle, networkDebugModeToggle
     ];
 
     allSettingsControls.forEach(control => {
         if (control) {
             control.addEventListener('change', handleSettingChange);
-        } else {
-            console.error('A control in allSettingsControls is null or undefined.');
         }
     });
 
+    // Apply Settings Button
     if (applySettingsBtn) {
         applySettingsBtn.addEventListener('click', showConfirmationModal);
     }
 
+    // Confirmation Modal Buttons
     if (confirmBtn) {
         confirmBtn.addEventListener('click', () => {
             saveSettings();
@@ -568,14 +535,9 @@ document.addEventListener('DOMContentLoaded', () => {
         cancelBtn.addEventListener('click', hideConfirmationModal);
     }
 
+    // Override Multiplier Input
     if (overrideMultiplierInput) {
         overrideMultiplierInput.addEventListener('input', updateMultiplierDescription);
-    }
-
-    if (betaFeaturesToggle) {
-        betaFeaturesToggle.addEventListener('change', () => {
-            applyBetaFeatures(betaFeaturesToggle.checked);
-        });
     }
 
     // --- Tooltip Creation ---
@@ -609,22 +571,6 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="tooltip-warning">
                 The panel shows all outgoing 'fetch' requests, their HTTP status, and response time, along with server-side statistics.
-            </div>
-        `);
-
-        // Tooltip for Bypass Mode
-        createInfoTooltip('bypassModeInfo', `
-            <h3>Bypass Mode Options</h3>
-            <div class="tooltip-item">
-                <h4>Registry Method</h4>
-                <p>Modifies the Windows registry to change the MAC address. Doesn't require system restart in some cases.</p>
-            </div>
-            <div class="tooltip-item">
-                <h4>CMD Method</h4>
-                <p>Uses command line (netsh) to change the MAC address. Requires system restart.</p>
-            </div>
-            <div class="tooltip-warning">
-                Note: Both methods will send a notification and require admin, registry allows more methods to be possible.
             </div>
         `);
 
@@ -690,25 +636,6 @@ document.addEventListener('DOMContentLoaded', () => {
             `);
         }
         
-        createInfoTooltip('acceleratedBypassingInfo', `
-            <h3>Accelerated Bypassing</h3>
-            <div class="tooltip-item">
-                <p>When enabled, the application will automatically perform a soft restart of your network adapters after a successful bypass using a faster powershell command.</p>
-            </div>
-            <div class="tooltip-warning">
-                While this can be faster for users it can also create more problems unless you know how to fix a unstable connection do not use.
-            </div>
-        `);
-    }
-
-    const settingsFab = document.getElementById('settings-fab');
-    if (settingsFab) {
-    }
-
-    if (openWinHotspotSettingsBtn) {
-        openWinHotspotSettingsBtn.addEventListener('click', () => {
-            window.open('ms-settings:network-mobilehotspot', '_blank');
-        });
     }
 
     // --- Initialization ---

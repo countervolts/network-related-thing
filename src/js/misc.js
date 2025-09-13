@@ -1,5 +1,4 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const toggleConsoleBtn = document.getElementById('toggleConsoleBtn');
     const clearConsoleBtn = document.getElementById('clearConsoleBtn');
     const clearLocalStorageBtn = document.getElementById('clearLocalStorageBtn');
     const downloadOuiBtn = document.getElementById('downloadOuiBtn');
@@ -9,129 +8,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const notificationContainer = document.getElementById('notificationContainer');
     const restartAdaptersBtn = document.getElementById('restartAdaptersBtn');
     const resetSettingsBtn = document.getElementById('resetSettingsBtn');
-
-    async function updateConsoleButton() {
-        if (!toggleConsoleBtn) return;
-        try {
-            const response = await fetch('/misc/console-status');
-            const data = await response.json();
-            if (response.ok) {
-                toggleConsoleBtn.textContent = data.status === 'visible' ? 'Hide Console' : 'Show Console';
-            }
-        } catch (error) {
-            console.error('Failed to get console status:', error);
-        }
-    }
-
-    if (toggleConsoleBtn) {
-        toggleConsoleBtn.addEventListener('click', async () => {
-            try {
-                const response = await fetch('/misc/toggle-console-visibility', { method: 'POST' });
-                const data = await response.json();
-                if (response.ok) {
-                    window['showNotification'](data.message, 'success');
-                    updateConsoleButton();
-                } else {
-                    window['showNotification'](data.error || 'Failed to toggle console.', 'error');
-                }
-            } catch (error) {
-                console.error('Error toggling console visibility:', error);
-                window['showNotification']('An error occurred while toggling console visibility.', 'error');
-            }
-        });
-    }
-
-    // Make showNotification available globally
-    window['showNotification'] = function(message, type = 'success') {
-        const notification = document.createElement('div');
-        notification.className = `notification ${type}`;
-        notification.textContent = message;
-        notificationContainer.appendChild(notification);
-
-        setTimeout(() => notification.classList.add('show'), 100);
-        setTimeout(() => {
-            notification.classList.remove('show');
-            setTimeout(() => notification.remove(), 500);
-        }, 3000);
-    };
-
-    // Make a global confirmation modal available
-    window['showConfirmation'] = function(title, message, confirmText = 'Confirm', cancelText = 'Cancel') {
-        return new Promise((resolve) => {
-            const modal = document.getElementById('genericConfirmModal');
-            const titleEl = document.getElementById('genericConfirmTitle');
-            const messageEl = document.getElementById('genericConfirmMessage');
-            const confirmBtn = document.getElementById('genericConfirmBtn');
-            const cancelBtn = document.getElementById('genericCancelBtn');
-
-            if (!modal || !titleEl || !messageEl || !confirmBtn || !cancelBtn) {
-                console.error('Generic confirmation modal elements not found!');
-                resolve(false); // Fallback to prevent blocking
-                return;
-            }
-
-            titleEl.textContent = title;
-            messageEl.textContent = message;
-            confirmBtn.textContent = confirmText;
-            cancelBtn.textContent = cancelText;
-
-            modal.style.display = 'flex';
-
-            const cleanup = () => {
-                modal.style.display = 'none';
-                confirmBtn.removeEventListener('click', onConfirm);
-                cancelBtn.removeEventListener('click', onCancel);
-            };
-
-            const onConfirm = () => {
-                cleanup();
-                resolve(true);
-            };
-
-            const onCancel = () => {
-                cleanup();
-                resolve(false);
-            };
-
-            confirmBtn.addEventListener('click', onConfirm);
-            cancelBtn.addEventListener('click', onCancel);
-        });
-    };
-
-    window['updateHistoryFileSizes'] = async function() {
-        const clearHistoryDropdown = document.getElementById('clearHistoryDropdown');
-        if (!clearHistoryDropdown) return; // Guard clause
-
-        try {
-            const response = await fetch('/misc/history-sizes');
-            if (!response.ok) return;
-            const sizes = await response.json();
-            
-            const formatBytes = (bytes) => {
-                if (bytes === 0) return '0 B';
-                const k = 1024;
-                const sizes = ['B', 'KB', 'MB', 'GB'];
-                const i = Math.floor(Math.log(bytes) / Math.log(k));
-                return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-            };
-
-            const scanOption = clearHistoryDropdown.querySelector('option[value="scan"]');
-            const bypassOption = clearHistoryDropdown.querySelector('option[value="bypass"]');
-            const allOption = clearHistoryDropdown.querySelector('option[value="all"]');
-
-            if (scanOption && sizes.scan_size) {
-                scanOption.textContent = `Scan History (${formatBytes(sizes.scan_size)})`;
-            }
-            if (bypassOption && sizes.bypass_size) {
-                bypassOption.textContent = `Bypass History (${formatBytes(sizes.bypass_size)})`;
-            }
-            if (allOption && sizes.total_size) {
-                allOption.textContent = `All History (${formatBytes(sizes.total_size)})`;
-            }
-        } catch (error) {
-            console.error('Failed to fetch history file sizes:', error);
-        }
-    }
 
     if (clearConsoleBtn) {
         clearConsoleBtn.addEventListener('click', async () => {
@@ -271,7 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const response = await fetch('/misc/open-history-folder', { method: 'POST' });
                 if (response.ok) {
-                    window['showNotification']('Storage Folder opened in Explorer.', 'success');
+                    window['showNotification']('Storage Folder opened in Finder.', 'success');
                 } else {
                     window['showNotification']('Failed to open Storage Folder.', 'error');
                 }
@@ -342,9 +218,4 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-    
-    // This will be moved to ui.js
-    // initCustomization();
-    updateHistoryFileSizes();
-    updateConsoleButton();
 });

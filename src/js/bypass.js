@@ -1,14 +1,9 @@
 // JavaScript for MAC address bypass functionality
 document.getElementById('bypassTab').addEventListener('click', async () => {
     try {
-        const settingsResponse = await fetch('/settings');
-        const settings = await settingsResponse.json();
-        const bypassMode = settings.bypass_mode || 'registry';
-        
-        // Initial load of adapters - this will be refreshed when the toggle changes
-        refreshAdapters(bypassMode);
+        // Initial load of adapters
+        refreshAdapters();
         loadVendors();
-
     } catch (error) {
         showStatus(error.message, 'error');
     }
@@ -239,10 +234,6 @@ async function refreshAdapters(forcedBypassMode = null) {
     try {
         const showIgnored = document.getElementById('showIgnoreListToggle')?.checked || false;
         
-        const settingsResponse = await fetch('/settings');
-        const settings = await settingsResponse.json();
-        const bypassMode = forcedBypassMode || settings.bypass_mode || 'registry';
-        
         const adaptersResponse = await fetch('/bypass/adapters?show_ignored=' + showIgnored);
         const adapters = await adaptersResponse.json();
         
@@ -263,7 +254,6 @@ async function refreshAdapters(forcedBypassMode = null) {
         });
         
         list.innerHTML = adapters.map(adapter => {
-            const isRegistryMode = bypassMode === 'registry';
             return `
                 <div class="adapter-card ${adapter.ignored ? 'ignored' : ''}">
                     <div class="adapter-card-header">
@@ -272,31 +262,27 @@ async function refreshAdapters(forcedBypassMode = null) {
                             <div class="adapter-name">${adapter.description}</div>
                             <div class="adapter-transport"><code>${adapter.transport}</code></div>
                         </div>
-                        ${adapter.default ? '<div class="adapter-badge default">Default</div>' : ''}
+                        ${adapter.active ? '<div class="adapter-badge default">Active</div>' : ''}
                         ${adapter.ignored ? '<div class="adapter-badge ignored">Ignored</div>' : ''}
                     </div>
                     <div class="adapter-card-body">
-                        ${isRegistryMode ? `
-                            <div class="control-group">
-                                <label for="bypassMode-${adapter.transport}">Method:</label>
-                                <select id="bypassMode-${adapter.transport}" class="bypass-mode-dropdown dropdown" data-transport="${adapter.transport}">
-                                    <option value="standard">Standard</option>
-                                    <option value="tmac">Tmac</option>
-                                    <option value="randomized">Randomized</option>
-                                    <option value="manual">Manual</option>
-                                </select>
-                            </div>
-                            <div class="control-group manual-mac-input-container" id="manualMacContainer-${adapter.transport}" style="display: none;">
-                                <label for="manualMac-${adapter.transport}">MAC Address:</label>
-                                <input type="text" id="manualMac-${adapter.transport}" class="hotspot-input manual-mac-input" placeholder="00:1A:2B:3C:4D:5E">
-                            </div>
-                        ` : ''}
+                        <div class="control-group">
+                            <label for="bypassMode-${adapter.transport}">Method:</label>
+                            <select id="bypassMode-${adapter.transport}" class="bypass-mode-dropdown dropdown" data-transport="${adapter.transport}">
+                                <option value="randomized">Randomized</option>
+                                <option value="manual">Manual</option>
+                            </select>
+                        </div>
+                        <div class="control-group manual-mac-input-container" id="manualMacContainer-${adapter.transport}" style="display: none;">
+                            <label for="manualMac-${adapter.transport}">MAC Address:</label>
+                            <input type="text" id="manualMac-${adapter.transport}" class="hotspot-input manual-mac-input" placeholder="00:1A:2B:3C:4D:5E">
+                        </div>
                     </div>
                     <div class="adapter-card-footer">
                         <button class="btn btn-primary btn-bypass" 
                                 onclick="changeMac('${adapter.transport}')" 
                                 ${adapter.ignored ? 'disabled' : ''}>
-                            Bypass (${bypassMode})
+                            Bypass
                         </button>
                     </div>
                 </div>
@@ -328,7 +314,7 @@ function changeMac(transport) {
     showStatus('Starting MAC address bypass...', 'info');
     
     const dropdown = document.getElementById(`bypassMode-${transport}`);
-    const macMode = dropdown ? dropdown.value : 'standard';
+    const macMode = dropdown ? dropdown.value : 'randomized';
     
     showStatus('Processing...', 'info');
     

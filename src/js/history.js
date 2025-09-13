@@ -38,8 +38,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const list = document.getElementById('bypassHistoryList');
         if (!list) return;
 
-        const generationModeFilter = bypassModeFilter.value; // e.g., 'randomized'
-        const applicationMethodFilter = bypassMethodFilter.value; // e.g., 'registry'
+        const generationModeFilter = bypassModeFilter.value;
+        const applicationMethodFilter = bypassMethodFilter.value; 
         const sortOrder = bypassSort.value;
 
         let filtered = fullBypassHistory
@@ -218,7 +218,6 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const populateFilters = () => {
-        // Populate Method filter (Registry/CMD)
         const applicationMethods = [...new Set(fullBypassHistory.map(item => item.method).filter(Boolean))];
         bypassMethodFilter.innerHTML = '<option value="all">All Methods</option>' + 
             applicationMethods.map(m => `<option value="${m.toLowerCase()}">${m.charAt(0).toUpperCase() + m.slice(1)}</option>`).join('');

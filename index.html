@@ -22,7 +22,7 @@
                 return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
             }
 
-            const TABS_TO_TOGGLE = ['scannerTab', 'monitorTab', 'autoTab', 'historyTab', 'updaterTab'];
+            const TABS_TO_TOGGLE = ['scannerTab', 'monitorTab', 'historyTab'];
             try {
                 const savedUiSettings = JSON.parse(localStorage.getItem('uiCustomization'));
                 if (savedUiSettings) {
@@ -54,17 +54,6 @@
                 console.error('Failed to apply UI customizations early:', e);
             }
 
-            try {
-                const savedSettings = JSON.parse(localStorage.getItem('settings'));
-                if (!savedSettings || savedSettings.beta_features !== true) {
-                    const style = document.createElement('style');
-                    style.textContent = `#autoTabWrapper { display: none; }`;
-                    document.head.appendChild(style);
-                }
-            } catch (e) {
-                console.error('Failed to apply beta features visibility early:', e);
-            }
-
             window.addEventListener('DOMContentLoaded', () => {
                 window.scrollTo(0, 0);
             });
@@ -81,11 +70,8 @@
                 <div class="nav-item-wrapper"><a href="#bypass" id="bypassTab" class="nav-link" data-tooltip="Bypass"><span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg></span><span class="nav-text">Bypass</span></a></div>
                 <div class="nav-item-wrapper"><a href="#scanner" id="scannerTab" class="nav-link" data-tooltip="Scanner"><span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></span><span class="nav-text">Scanner</span></a></div>
                 <div class="nav-item-wrapper"><a href="#monitor" id="monitorTab" class="nav-link" data-tooltip="Monitor"><span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg></span><span class="nav-text">Monitor</span></a></div>
-                <div class="nav-item-wrapper" id="autoTabWrapper"><a href="#auto" id="autoTab" class="nav-link" data-tooltip="Auto"><span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"></path><path d="M16 4h-2"></path><path d="M4 16v-2"></path><path d="M4 8H8"></path><path d="M16 20v-4h4"></path><path d="M20 12h-4"></path><rect x="2" y="14" width="8" height="8" rx="2"></rect><path d="M18 6l-5 5"></path></svg></span><span class="nav-text">Auto</span></a></div>
-                <div class="nav-item-wrapper" id="nav-sep-2-wrapper"><div id="nav-sep-2" class="nav-separator"></div></div>
-                <div class="nav-item-wrapper"><a href="#history" id="historyTab" class="nav-link" data-tooltip="History"><span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4v6h6"></path><path d="M3.51 15a9 9 0 1 0 2.19-9.51L1 10"></path></svg></span><span class="nav-text">History</span></a></div>
-                <div class="nav-item-wrapper"><a href="#updater" id="updaterTab" class="nav-link" data-tooltip="Updater"><span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M21 21v-5h-5"></path></svg></span><span class="nav-text">Updater</span></a></div>
-                <div class="nav-item-wrapper"><div id="nav-sep-3" class="nav-separator"></div></div>
+                 <div class="nav-item-wrapper" id="nav-sep-2-wrapper"><div id="nav-sep-2" class="nav-separator"></div></div>
+                 <div class="nav-item-wrapper"><a href="#history" id="historyTab" class="nav-link" data-tooltip="History"><span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4v6h6"></path><path d="M3.51 15a9 9 0 1 0 2.19-9.51L1 10"></path></svg></span><span class="nav-text">History</span></a></div>
                 <div class="nav-item-wrapper"><div id="nav-clock" class="nav-clock"></div></div>
             </nav>
         </div>
@@ -282,12 +268,6 @@
                             <p class="details-prompt">Select a device to see details.</p>
                         </div>
                     </div>
-                    <div id="disabledDevicesPanel" class="device-list-section">
-                        <h3>Disabled Devices</h3>
-                        <div id="disabledDevices" class="device-list">
-                             <div class="no-results">No devices are disabled.</div>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -399,20 +379,13 @@
                         <a href="#settings-section-customization" class="settings-nav-link">Customization</a>
                         <a href="#settings-section-networking" class="settings-nav-link">Networking</a>
                         <a href="#settings-section-general" class="settings-nav-link">Settings</a>
-                        <button id="applySettingsBtn" class="apply-btn">Apply Changes</button>
+                        <button id="applySettingsBtn" class="btn apply-btn">Apply Changes</button>
                     </nav>
                     <main id="settings-panel-main" class="settings-panel-main">
                         <div id="settings-section-misc" class="settings-section-content">
                             <h2 class="settings-main-title">Miscellaneous</h2>
                             <div class="section-title">System Maintenance</div>
                             <div class="settings-grid single-column">
-                                <div class="setting-item" data-search-term="hide show console window system tray">
-                                    <div class="setting-content">
-                                        <span class="setting-label">Console Visibility</span>
-                                        <p class="setting-description">Hide the console to the system tray or show it again.</p>
-                                    </div>
-                                    <button id="toggleConsoleBtn" class="setting-action-btn">Hide Console</button>
-                                </div>
                                 <div class="setting-item" data-search-term="clear console output">
                                     <div class="setting-content">
                                         <span class="setting-label">Clear Console</span>
@@ -427,13 +400,6 @@
                                         </div>
                                         <button id="restartAdaptersBtn" class="setting-action-btn">Restart</button>
                                     </div>
-                                    <div class="setting-item" data-search-term="windows hotspot settings network sharing">
-                                        <div class="setting-content">
-                                            <span class="setting-label">Windows Hotspot</span>
-                                            <p class="setting-description">Due to the hotspot feature being removed, this will open native Windows Mobile Hotspot settings page.</p>
-                                        </div>
-                                        <button id="openWinHotspotSettingsBtn" class="setting-action-btn">Open</button>
-                                    </div>
                                 </div>
 
                                 <div class="section-title">Data Management</div>
@@ -441,16 +407,16 @@
                                     <div class="setting-item" data-search-term="reset settings default factory">
                                         <div class="setting-content">
                                             <span class="setting-label">Reset Settings</span>
-                                            <p class="setting-description">Restores all application settings to their default values. The application will reload.</p>
+                                            <p class="setting-description">Restore all settings to their default values.</p>
                                         </div>
                                         <button id="resetSettingsBtn" class="setting-action-btn btn-danger">Reset</button>
                                     </div>
-                                    <div class="setting-item" data-search-term="clear local storage cache">
+                                    <div class="setting-item" data-search-term="clear history bypass scan">
                                         <div class="setting-content">
-                                            <span class="setting-label">Clear Local Storage</span>
-                                            <p class="setting-description">Clears scan results and customization and other cached data from the browser.</p>
+                                            <span class="setting-label">Clear History</span>
+                                            <p class="setting-description">Clear bypass and scan history data.</p>
                                         </div>
-                                        <button id="clearLocalStorageBtn" class="setting-action-btn">Clear Data</button>
+                                        <button id="clearHistoryBtn" class="setting-action-btn">Clear</button>
                                     </div>
                                     <div class="setting-item" data-search-term="open storage folder history logs">
                                         <div class="setting-content">
@@ -474,20 +440,6 @@
                                             </select>
                                             <button id="clearHistoryBtn" class="setting-action-btn">Clear</button>
                                         </div>
-                                    </div>
-                                </div>
-
-                                <div class="section-title">Experimental</div>
-                                <div class="settings-grid single-column">
-                                    <div class="setting-item" data-search-term="beta features experimental auto bypass">
-                                        <div class="setting-content">
-                                            <label for="betaFeaturesToggle" class="setting-label">Enable Beta Features</label>
-                                            <p class="setting-description">Access experimental features like the Auto tab. May be unstable.</p>
-                                        </div>
-                                        <label class="toggle-switch">
-                                            <input type="checkbox" id="betaFeaturesToggle">
-                                            <span class="toggle-slider"></span>
-                                        </label>
                                     </div>
                                 </div>
 
@@ -641,64 +593,6 @@
                                     <input type="number" id="overrideMultiplierInput" class="number-input" min="1" step="1" value="2">
                                 </div>
                             </div>
-                            <div class="section-title">Bypass</div>
-                            <div class="settings-grid single-column">
-                                <div class="setting-item" data-search-term="bypass mode method registry cmd">
-                                    <div class="setting-content">
-                                        <label for="bypassModeDropdown" class="setting-label">
-                                            <div class="setting-header">
-                                                <span>Bypass Mode</span>
-                                                <div class="inline-info-icon" id="bypassModeInfo">?</div>
-                                            </div>
-                                        </label>
-                                        <p class="setting-description">Method used for changing the MAC address.</p>
-                                    </div>
-                                    <select id="bypassModeDropdown" class="dropdown">
-                                        <option value="registry">Registry Method</option>
-                                        <option value="cmd">CMD Method</option>
-                                    </select>
-                                </div>
-                                <div class="setting-item" data-search-term="pbcc internet connectivity check">
-                                    <div class="setting-content">
-                                        <label for="pbccToggle" class="setting-label">
-                                            <div class="setting-header">
-                                                <span>PBCC</span>
-                                                <div class="inline-info-icon" id="pbccInfo">?</div>
-                                            </div>
-                                        </label>
-                                        <p class="setting-description">Check for internet connectivity after a bypass.</p>
-                                    </div>
-                                    <label class="toggle-switch">
-                                        <input type="checkbox" id="pbccToggle">
-                                        <span class="toggle-slider"></span>
-                                    </label>
-                                </div>
-                                <div class="setting-item" data-search-term="accelerated bypassing fast restart network adapter">
-                                    <div class="setting-content">
-                                        <label for="acceleratedBypassingToggle" class="setting-label">
-                                            <div class="setting-header">
-                                                <span>Accelerated Bypassing</span>
-                                                <div class="inline-info-icon" id="acceleratedBypassingInfo">?</div>
-                                            </div>
-                                        </label>
-                                        <p class="setting-description">Automatically restart adapters after a bypass.</p>
-                                    </div>
-                                    <label class="toggle-switch">
-                                        <input type="checkbox" id="acceleratedBypassingToggle">
-                                        <span class="toggle-slider"></span>
-                                    </label>
-                                </div>
-                                <div class="setting-item" data-search-term="hardware level randomization rdrand mac generation">
-                                    <div class="setting-content">
-                                        <label for="hardwareRngToggle" class="setting-label">Hardware Level Randomization</label>
-                                        <p class="setting-description">Use hardware instructions (RDRAND) for MAC generation. Requires a Intel/AMD cpu from 2012 or newer.</p>
-                                    </div>
-                                    <label class="toggle-switch">
-                                        <input type="checkbox" id="hardwareRngToggle">
-                                        <span class="toggle-slider"></span>
-                                    </label>
-                                </div>
-                            </div>
                         </div>
                             <div id="settings-section-general" class="settings-section-content">
                                 <h2 class="settings-main-title">Settings</h2>
@@ -711,16 +605,6 @@
                                         </div>
                                         <label class="toggle-switch">
                                             <input type="checkbox" id="autoOpenToggle">
-                                            <span class="toggle-slider"></span>
-                                        </label>
-                                    </div>
-                                    <div class="setting-item" data-search-term="auto update check version">
-                                        <div class="setting-content">
-                                            <label for="autoUpdateToggle" class="setting-label">Auto Update</label>
-                                            <p class="setting-description">Automatically check for and install updates on startup.</p>
-                                        </div>
-                                        <label class="toggle-switch">
-                                            <input type="checkbox" id="autoUpdateToggle">
                                             <span class="toggle-slider"></span>
                                         </label>
                                     </div>
@@ -811,60 +695,6 @@
                 </div>
             </div>
 
-        <div id="updaterView" class="view" style="display: none;">
-            <h1>Update Manager</h1>
-            <div class="updater-layout">
-                <div class="updater-main">
-                    <div class="settings-section">
-                        <div class="section-title">Version Status</div>
-                        <div class="version-status-container">
-                            <div class="version-box">
-                                <span class="version-label">Current Version</span>
-                                <span id="currentVersion" class="version-number">Loading...</span>
-                            </div>
-                            <div class="version-flow">
-                                <div id="updateStatus" class="update-status-box">Checking for updates...</div>
-                                <div class="version-arrow">→</div>
-                                <div class="update-actions">
-                                    <button id="checkUpdateBtn" class="update-btn">Check for Updates</button>
-                                    <button id="downloadUpdateBtn" class="update-btn" disabled>Download Update</button>
-                                </div>
-                            </div>
-                            <div class="version-box">
-                                <span class="version-label">Latest Version</span>
-                                <span id="latestVersion" class="version-number">Checking...</span>
-                            </div>
-                        </div>
-                        <div id="updateProgressContainer" class="update-progress-container" style="display: none;">
-                            <div id="updateProgressText" class="progress-text"></div>
-                            <div class="progress-bar-bg">
-                                <div id="updateProgressBar" class="progress-bar"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="settings-section">
-                        <div class="section-title">Version Rollback</div>
-                        <p class="setting-description">If you're experiencing issues, you can roll back to a previous version.</p>
-                        <div class="downgrade-controls">
-                            <select id="versionSelect" class="styled-select" disabled>
-                                <option>Loading versions...</option>
-                            </select>
-                            <button id="downgradeBtn" class="update-btn" disabled>Downgrade</button>
-                        </div>
-                    </div>
-                </div>
-                <div class="updater-sidebar">
-                    <div class="settings-section">
-                        <div class="section-title">Changelog</div>
-                        <div id="changelogContainer" class="changelog-container">
-                            <p>Click "Check for Updates" to load the latest information.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <div id="monitorView" class="view" style="display: none;">
             <div class="monitor-container">
                 <div class="monitor-header">
@@ -883,83 +713,6 @@
             </div>
         </div>
 
-        <div id="autoView" class="view" style="display: none;">
-            <div class="scanner-header">
-                <h1>Auto Bypass</h1>
-                <p>Configure a background service to automate bypassing.</p>
-            </div>
-
-            <div class="settings-section">
-                <div class="section-title">
-                    Configuration
-                    <div class="inline-info-icon" id="autoBypassInfo">?</div>
-                </div>
-                <div class="settings-grid">
-                    <div class="setting-item">
-                        <div class="setting-content">
-                            <label for="autoBypassToggle" class="setting-label">Enable Auto Bypass</label>
-                            <p class="setting-description">Automatically run a bypass if internet connection is lost. Runs on startup.</p>
-                        </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="autoBypassToggle">
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-                    <div class="setting-item">
-                        <div class="setting-content">
-                            <label for="autoBypassAdapter" class="setting-label">Target Adapter</label>
-                            <p class="setting-description">Select the network adapter to monitor and bypass.</p>
-                        </div>
-                        <select id="autoBypassAdapter" class="dropdown">
-                            <option value="">Loading adapters...</option>
-                        </select>
-                    </div>
-                    <div class="setting-item">
-                        <div class="setting-content">
-                            <label for="autoBypassInterval" class="setting-label">Check Interval (seconds)</label>
-                            <p class="setting-description">How often to check for internet connectivity. Minimum 30 seconds.</p>
-                        </div>
-                        <input type="text" inputmode="numeric" id="autoBypassInterval" class="hotspot-input" min="30" value="60">
-                    </div>
-                </div>
-                <div class="setting-footer">
-                    <button id="applyAutoBypassSettings" class="apply-btn">Apply</button>
-                </div>
-            </div>
-            <div class="settings-section">
-                <div class="section-title">Service Process</div>
-                <div id="autoBypassStatusContainer" class="settings-grid">
-                    <div class="setting-item">
-                        <div class="setting-content">
-                            <span class="setting-label">Status</span>
-                            <p id="autoBypassStatus" class="setting-description">Loading...</p>
-                        </div>
-                    </div>
-                    <div class="setting-item">
-                        <div class="setting-content">
-                            <span class="setting-label">Process ID (PID)</span>
-                            <p id="autoBypassPid" class="setting-description">N/A</p>
-                        </div>
-                    </div>
-                    <div class="setting-item">
-                        <div class="setting-content">
-                            <span class="setting-label">Uptime</span>
-                            <p id="autoBypassUptime" class="setting-description">N/A</p>
-                        </div>
-                    </div>
-                     <div class="setting-item">
-                        <div class="setting-content">
-                            <span class="setting-label">Start Time</span>
-                            <p id="autoBypassStartTime" class="setting-description">N/A</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="setting-footer">
-                    <button id="toggleAutoBypassTaskBtn" class="btn btn-secondary" disabled>Pause Task</button>
-                    <button id="killAutoBypassBtn" class="btn btn-danger" disabled>Kill Process</button>
-                </div>
-            </div>
-        </div>
     </main>
 
     <div id="bypassToolkitOverlay" class="toolkit-overlay" style="display: none;">
@@ -1117,16 +870,15 @@
     </button>
     <div id="version-display" class="version"></div>
 
+    <script src="src/js/ui.js"></script>
     <script src="src/js/scanner.js"></script>
     <script src="src/js/settings.js"></script>
     <script src="src/js/misc.js"></script> 
     <script src="src/js/bypass.js"></script>
     <script src="src/js/history.js"></script>
     <script src="src/js/home.js"></script> 
-    <script src="src/js/updating.js"></script>
     <script src="src/js/monitor.js"></script>
-    <script src="src/js/auto.js"></script>
-    <script src="src/js/ui.js"></script>
+    
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
@@ -1145,9 +897,7 @@
                     '#history': 'historyView',
                     '#settings': 'settingsView',
                     '#misc': 'miscView',
-                    '#updater': 'updaterView',
                     '#monitor': 'monitorView',
-                    '#auto': 'autoView'
                 };
 
                 Object.values(views).forEach(viewId => {

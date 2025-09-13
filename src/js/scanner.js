@@ -13,8 +13,6 @@ function showNotification(message, type = 'success') {
     }, 3000);
 }
 
-let disabledDevicesBox;
-let disabledDevices = [];
 let pingStreams = {};
 
 function requestPing(ip) {
@@ -95,7 +93,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const fullBtn = document.getElementById('fullScanBtn');
     const resultsBody = document.getElementById('resultsBody');
     const userDeviceList = document.getElementById('userDeviceList');
-    disabledDevicesBox = document.getElementById('disabledDevices');
     const lastScanTimestamp = document.getElementById('lastScanTimestamp');
     const deviceDetailsPanel = document.getElementById('deviceDetailsContent');
     const portScanPanel = document.getElementById('portScanContent');
@@ -112,15 +109,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function createDeviceItem(device, isDisabled = false, isUserOrRouter = false) {
+    function createDeviceItem(device, isUserOrRouter = false) {
         const item = document.createElement('div');
         item.className = 'device-item';
-        if (isDisabled) item.classList.add('disabled');
         item.dataset.ip = device.ip;
         item.dataset.mac = device.mac;
 
         let iconContent = device.is_router ? '🌐' : (device.is_local ? '🏠' : '🖥️');
-        if (isDisabled) iconContent = '🚫';
 
         item.innerHTML = `
             <div class="device-icon">${iconContent}</div>
@@ -138,24 +133,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isUserOrRouter) {
             item.classList.add('non-actionable');
-        } else if (isDisabled) {
-            const unblockBtn = document.createElement('button');
-            unblockBtn.className = 'btn btn-success';
-            unblockBtn.textContent = 'Unblock';
-            unblockBtn.onclick = (e) => {
-                e.stopPropagation();
-                enableDevice(device);
-            };
-            actionsContainer.appendChild(unblockBtn);
-        } else {
-            const blockBtn = document.createElement('button');
-            blockBtn.className = 'btn btn-danger';
-            blockBtn.textContent = 'Block';
-            blockBtn.onclick = (e) => {
-                e.stopPropagation();
-                disableDevice(device);
-            };
-            actionsContainer.appendChild(blockBtn);
         }
 
         item.addEventListener('click', () => {
@@ -181,15 +158,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isUserOrRouter) {
             if (userDeviceList) userDeviceList.appendChild(item);
-        } else if (isDisabled) {
-            if (disabledDevicesBox) disabledDevicesBox.appendChild(item);
         } else {
             if (resultsBody) resultsBody.appendChild(item);
         }
-    }
-
-    function saveDisabledDevices() {
-        localStorage.setItem('disabledDevices', JSON.stringify(disabledDevices));
     }
 
     function saveLastScanDetails(scanType, results) {
@@ -213,13 +184,11 @@ document.addEventListener('DOMContentLoaded', () => {
     
         let discoveredDevicesCount = 0;
         savedScanResults.forEach(device => {
-            if (!disabledDevices.some(d => d.mac === device.mac)) {
-                if (device.is_local || device.is_gateway) {
-                    createDeviceItem(device, false, true);
-                } else {
-                    createDeviceItem(device, false);
-                    discoveredDevicesCount++;
-                }
+            if (device.is_local || device.is_gateway) {
+                createDeviceItem(device, true);
+            } else {
+                createDeviceItem(device, false);
+                discoveredDevicesCount++;
             }
         });
     
@@ -269,10 +238,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             let discoveredDevicesCount = 0;
             results.forEach(device => {
-                const isDisabled = disabledDevices.some(d => d.mac === device.mac);
                 if (device.is_local || device.is_gateway) {
-                    createDeviceItem(device, false, true);
-                } else if (!isDisabled) {
+                    createDeviceItem(device, true);
+                } else {
                     createDeviceItem(device, false);
                     discoveredDevicesCount++;
                 }
@@ -294,71 +262,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function disableDevice(device) {
-        showNotification(`Blocking ${device.mac}...`, 'info');
-        try {
-            const response = await fetch('/network/disable', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(device),
-            });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Failed to block device');
-
-            showNotification(data.message, 'success');
-            const deviceElement = document.querySelector(`.device-item[data-mac="${device.mac}"]`);
-            if (deviceElement) deviceElement.remove();
-
-            disabledDevices.push(device);
-            createDeviceItem(device, true);
-            saveDisabledDevices();
-        } catch (error) {
-            showNotification(`Error blocking ${device.mac}: ${error.message}`, 'error');
-        }
-    }
-
-    async function enableDevice(device) {
-        showNotification(`Unblocking ${device.mac}...`, 'info');
-        try {
-            const response = await fetch('/network/enable', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ip: device.ip, mac: device.mac }),
-            });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Failed to unblock device');
-
-            showNotification(data.message, 'success');
-            const deviceElement = document.querySelector(`.device-item[data-mac="${device.mac}"]`);
-            if (deviceElement) deviceElement.remove();
-            
-            disabledDevices = disabledDevices.filter(d => d.mac !== device.mac);
-            createDeviceItem(device, false);
-            saveDisabledDevices();
-        } catch (error) {
-            showNotification(`Error unblocking ${device.mac}: ${error.message}`, 'error');
-        }
-    }
-
-    async function loadDisabledDevices() {
-        try {
-            const response = await fetch('/network/disabled-devices');
-            const serverDisabledDevices = await response.json();
-            localStorage.setItem('disabledDevices', JSON.stringify(serverDisabledDevices));
-            disabledDevices = serverDisabledDevices;
-
-            if (disabledDevicesBox) disabledDevicesBox.innerHTML = '';
-            disabledDevices.forEach(device => createDeviceItem(device, true));
-        } catch (error) {
-            console.error('Failed to load disabled devices:', error);
-        }
-    }
-
     if (basicBtn) basicBtn.addEventListener('click', () => performScan('scan/basic'));
     if (fullBtn) fullBtn.addEventListener('click', () => performScan('scan/full'));
 
     if (document.getElementById('scannerView')) {
-        loadDisabledDevices();
         updateLastScanDisplay(lastScanDetails);
         loadSavedScanResults();
     }
