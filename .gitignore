@@ -1,0 +1,23 @@
+# electron
+node_modules/
+electron-wrapper/node_modules/
+package-lock.json
+electron-wrapper/package-lock.json
+.electron-cache/
+electron-builder-overrides.yml
+electron-wrapper/dist/
+
+# python
+__pycache__/
+build/
+dist/
+.vscode/
+release/
+*.spec
+
+# internal testing/cleaning/releasing files
+/internal
+todo.md
+qa.md
+m.txt
+server.exe
