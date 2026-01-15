@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file (only user-related things).
 
-## [v1.7] - 2026-01-10
+## [v1.7] - 2026-01-10 
 ### Added
 - Tutorial
   - added a tutorial for first time users (which will be all of you) 
@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file (only user-r
   - added os detection, not perfect just a best guess based off certain aspects for a device
 
 ### Removed
-- Removed `Netifaces` due to it requiring c++ build tools, this should allow the `./pyinstaller.cmd` to work
+- Removed `Netifaces` due to it requiring c++ build tools, this should allow the `./pyinstaller.cmd` to work (and general source building)
 
 ## [v1.6] - 2025-08-25
 ### Added

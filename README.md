@@ -80,7 +80,7 @@ download and extract the source code [here](https://github.com/countervolts/netw
 
 | version | release focus                                                       | released      | status                                                                          |
 | :------ | :-------------------------------------------------------------------- | :------------ | :------------------------------------------------------------------------------ |
-| `v1.7`  |       Tutorial and Os detection                    | january 10, 2026 | ![completed](https://img.shields.io/badge/status-completed-brightgreen)         |
+| `v1.7`  |       tutorial and os detection                    | january 10, 2026 | ![completed](https://img.shields.io/badge/status-completed-brightgreen)         |
 | `v1.6`  | auto updater, rollback and better bypassing options                          | august 25, 2025 | ![completed](https://img.shields.io/badge/status-completed-brightgreen)         |
 | `v1.5`  | ui/ux redesign with some functions changes and lots of new settings                          | july 22, 2025 | ![completed](https://img.shields.io/badge/status-completed-brightgreen)         |
 | `v1.4`  | updater, home and monitoring with electron support (and more ui cleanup) | may 17, 2025  | ![completed](https://img.shields.io/badge/status-completed-brightgreen)         |
